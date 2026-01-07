@@ -1,0 +1,1643 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Le Château de Dracula - Rencontres Dynamiques</title>
+  <style>
+
+    /* Reset & Bases */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background-color: #000;
+      font-family: "Georgia", serif;
+      color: #ccc;
+      line-height: 1.6;
+      font-size: 0.95rem;
+      transition: filter 0.5s ease-in-out; /* Pour l'effet de rencontre */
+    }
+    body.encounter-active {
+        filter: blur(0.8px) brightness(0.95); /* Effet visuel subtil pour rencontre */
+    }
+    body.combat-active {
+        /* Peut-être un effet différent pour le combat ? */
+         filter: brightness(0.9);
+    }
+
+
+    /* Layout */
+    #ui-container {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      grid-template-rows: auto 1fr;
+      grid-template-areas:
+        "header header"
+        "content sidebar";
+      min-height: 100vh;
+      background-color: #111;
+    }
+    .game-header {
+      grid-area: header;
+      background-color: #1a0000;
+      border-bottom: 2px solid #600;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .game-content {
+      grid-area: content;
+      position: relative; /* Important pour positionner #combat-ui */
+      overflow: hidden;
+      padding: 0;
+      height: calc(100vh - 72px); /* Ajusté pour header */
+    }
+    #locations-background {
+      position: absolute;
+      top: -10vh;
+      left: -15vh;
+      width: 120%;
+      height: 100%;
+      background-size: cover;
+      background-position: 35% center;
+      opacity: 0.35;
+      z-index: 0;
+      transition: opacity 0.8s ease, background-image 1s ease;
+    }
+
+    /* --- Styles Cadre Texte (Lieu/Narrative) --- */
+    .content-wrapper {
+        position: absolute;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 90%;
+        max-width: 1200px;
+        max-height: 40vh;
+        background-color: rgba(10, 0, 0, 0.8);
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 0 25px rgba(255,0,0,0.4);
+        color: #e0e0e0;
+        z-index: 1;
+        display: flex; /* Sera caché pendant le combat */
+        flex-direction: column;
+        box-sizing: border-box;
+        overflow: hidden;
+        transition: opacity 0.3s ease; /* Transition douce */
+    }
+    .content-wrapper.hidden {
+         opacity: 0;
+         pointer-events: none; /* Empêche interaction quand caché */
+         display: none; /* Cache complètement */
+    }
+    .text-container {
+        flex: 1;
+        overflow-y: auto;
+        width: 100%;
+        padding-right: 15px; /* Espace pour scrollbar */
+        padding-left: 5px;
+        box-sizing: border-box;
+        scrollbar-width: thin;
+        scrollbar-color: #500 #1a0000;
+    }
+     /* Style scrollbar pour Webkit (Chrome, Safari) */
+    .text-container::-webkit-scrollbar { width: 8px; }
+    .text-container::-webkit-scrollbar-track { background: #1a0000; border-radius: 4px; }
+    .text-container::-webkit-scrollbar-thumb { background-color: #500; border-radius: 4px; border: 2px solid #1a0000; }
+
+    #locations-title {
+        font-size: 1.8rem; margin-bottom: 15px; color: #ff5555;
+        text-shadow: 1px 1px 3px #000; border-bottom: 1px solid #700;
+        padding-bottom: 10px; width: 100%; box-sizing: border-box; flex-shrink: 0;
+    }
+    #locations-description {
+        width: 100%; max-width: none; margin-bottom: 20px; text-align: justify;
+        white-space: pre-wrap; padding: 0; box-sizing: border-box; line-height: 1.6;
+    }
+    #choices-container {
+        padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.2);
+        flex-shrink: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px; margin-top: auto;
+    }
+    /* --- Fin Styles Cadre Texte --- */
+
+    /* --- Styles Interface Combat --- */
+    #combat-ui {
+        display: none; /* Caché par défaut */
+        position: absolute;
+        bottom: 30px; /* Même position que content-wrapper */
+        left: 50%;
+        transform: translateX(-50%);
+        width: 90%;
+        max-width: 800px; /* Peut-être plus petit que le wrapper normal */
+        max-height: 50vh; /* Un peu plus haut pour le log */
+        background-color: rgba(10, 0, 0, 0.9); /* Plus opaque pour focus */
+        padding: 20px;
+        border-radius: 8px;
+        border: 2px solid #800; /* Bordure plus marquée */
+        box-shadow: 0 0 30px rgba(255,0,0,0.6);
+        color: #e0e0e0;
+        z-index: 2; /* Au dessus du content-wrapper normal */
+        flex-direction: column;
+        box-sizing: border-box;
+        overflow: hidden; /* Gérer le scroll interne */
+        transition: opacity 0.3s ease;
+    }
+     #combat-ui.visible {
+         display: flex; /* Afficher quand combat actif */
+         opacity: 1;
+     }
+     #combat-info {
+         display: flex;
+         justify-content: space-between;
+         margin-bottom: 15px;
+         padding-bottom: 10px;
+         border-bottom: 1px solid #500;
+         font-size: 0.9em;
+     }
+     #combat-player-info, #combat-enemy-info {
+         flex-basis: 48%; /* Prend presque la moitié de la largeur */
+     }
+      #combat-enemy-name {
+          font-size: 1.3rem; color: #ff6666; margin-bottom: 5px; font-weight: bold;
+      }
+     #combat-actions {
+         display: flex;
+         justify-content: center;
+         gap: 15px;
+         margin-bottom: 15px;
+         flex-shrink: 0;
+     }
+     #combat-actions button { /* Style pour les boutons de combat */
+         background: linear-gradient(to bottom, #600, #400);
+         border: 1px solid #900;
+         color: #fff;
+         padding: 8px 15px;
+         border-radius: 5px;
+         cursor: pointer;
+         font-family: "Georgia", serif;
+         font-size: 0.9rem;
+         transition: all 0.2s ease;
+     }
+     #combat-actions button:hover {
+         background: linear-gradient(to bottom, #800, #600);
+         transform: translateY(-1px);
+     }
+     #combat-log-container {
+         flex-grow: 1; /* Prend l'espace restant */
+         overflow: hidden; /* Empêche le débordement */
+         display: flex; /* Permet au log de prendre toute la hauteur */
+         flex-direction: column;
+     }
+    #combat-log {
+        height: 120px; /* Hauteur fixe pour le log */
+        overflow-y: scroll;
+        border: 1px solid #400;
+        background-color: rgba(0,0,0,0.3);
+        padding: 8px;
+        margin-top: 10px;
+        font-size: 0.85em;
+        line-height: 1.4;
+        flex-shrink: 0; /* Empêche de rétrécir */
+        scrollbar-width: thin;
+        scrollbar-color: #600 #111;
+    }
+     /* Style scrollbar pour Webkit (Chrome, Safari) */
+    #combat-log::-webkit-scrollbar { width: 6px; }
+    #combat-log::-webkit-scrollbar-track { background: #111; }
+    #combat-log::-webkit-scrollbar-thumb { background-color: #600; border-radius: 3px; }
+    #combat-log p { margin-bottom: 4px; }
+    #combat-log p:last-child { margin-bottom: 0; }
+    /* --- Fin Styles Interface Combat --- */
+
+
+    .game-sidebar {
+      grid-area: sidebar;
+      background-color: #1a0000;
+      border-left: 2px solid #600;
+      padding: 20px;
+      overflow-y: auto;
+      height: calc(100vh - 72px); /* Ajusté pour header */
+    }
+
+    /* Header */
+    .header-left { display: flex; align-items: center; gap: 20px; }
+    #player-portrait {
+      width: 50px; height: 50px; border-radius: 50%; background-color: #300;
+      border: 2px solid #900; background-size: cover; background-position: center; flex-shrink: 0;
+    }
+    .player-stats { display: flex; flex-direction: column; gap: 4px; }
+    #character-name { font-size: 1rem; color: #f55; margin-bottom: 1px; font-weight: bold; }
+    .health-container { font-size: 0.85rem; color: #ccc; }
+    .health-container span { font-weight: bold; color: #fff; }
+    .stats-line { font-size: 0.8rem; color: #aaa; }
+    .stats-line span { margin-right: 8px; }
+    .stats-line span span { color: #fff; font-weight: bold; margin-left: 2px; }
+    .header-buttons { display: flex; gap: 10px; }
+    .header-button {
+      background-color: #400; color: #fff; border: 1px solid #600; border-radius: 4px;
+      padding: 6px 10px; cursor: pointer; transition: background 0.3s, transform 0.1s;
+      font-size: 0.85rem; font-family: "Georgia", serif;
+    }
+    .header-button:hover { background-color: #600; }
+    .header-button:active { transform: scale(0.95); }
+
+    /* Choices Styling */
+    .choice, .choice-button {
+      background: linear-gradient(to bottom, #500, #300); color: #eee; border: 1px solid #700;
+      border-radius: 5px; padding: 10px 15px; font-size: 0.9rem; text-align: left;
+      cursor: pointer; transition: all 0.3s ease; display: flex; flex-direction: column;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    .choice:hover, .choice-button:hover {
+      background: linear-gradient(to bottom, #700, #500); transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(128, 0, 0, 0.5);
+    }
+    .choice:disabled, .choice-button:disabled,
+    .choice.disabled, .choice-button.disabled {
+      background: linear-gradient(to bottom, #444, #222); color: #777; cursor: not-allowed;
+      transform: none; box-shadow: 0 1px 3px rgba(0,0,0,0.3); border-color: #555;
+    }
+    .choice-text { font-weight: normal; }
+    .requirement { font-size: 0.75em; color: #aaa; margin-top: 4px; font-style: italic; }
+
+    /* Sidebar */
+    .sidebar-section {
+      background-color: rgba(48, 0, 0, 0.6); border: 1px solid #500;
+      margin-bottom: 15px; border-radius: 4px; overflow: hidden;
+    }
+    .sidebar-section h3 {
+      background-color: #500; margin: 0; padding: 8px 15px; font-size: 1rem;
+      color: #fff; font-variant: small-caps; letter-spacing: 1px;
+    }
+    .sidebar-section-content { padding: 12px 15px; font-size: 0.9rem; }
+    .sidebar-section-content ul { list-style: none; padding-left: 0; }
+    .sidebar-section-content li {
+      margin-bottom: 6px; padding: 3px 0; cursor: default; transition: color 0.2s;
+      border-bottom: 1px solid rgba(128, 0, 0, 0.15);
+    }
+    .sidebar-section-content li:last-child { border-bottom: none; }
+    .sidebar-section-content li[data-tooltip]:hover { color: #ffaaaa; cursor: help; }
+    /* Classe pour rendre les items d'inventaire cliquables */
+    .inventory-item {
+      cursor: pointer !important; /* Important pour surcharger le default */
+      transition: color 0.2s ease, text-shadow 0.2s ease;
+    }
+    .inventory-item:hover {
+        color: #ffaaaa;
+        text-shadow: 0 0 5px rgba(255, 100, 100, 0.5);
+    }
+    #visited-locations li { cursor: pointer; }
+    #visited-locations li:hover { color: #ffaaaa; text-decoration: underline; }
+
+    /* Tooltip Style */
+    [data-tooltip] { position: relative; }
+    [data-tooltip]::after {
+      content: attr(data-tooltip); position: absolute; left: 100%; top: 50%;
+      transform: translateY(-50%) translateX(10px); background-color: rgba(0,0,0,0.9);
+      color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 0.8em;
+      white-space: nowrap; z-index: 1000; opacity: 0; visibility: hidden;
+      transition: opacity 0.2s, visibility 0.2s; pointer-events: none;
+    }
+    [data-tooltip]:hover::after { opacity: 1; visibility: visible; }
+
+    /* Animations (ailes optionnelles) */
+    @keyframes pulseAura { 0%, 100% { filter: drop-shadow(0 0 3px #330000); opacity: 0.85; } 50% { filter: drop-shadow(0 0 8px #770000); opacity: 0.82; } }
+    @keyframes tremblementSubtil { 0% { transform: translate(0px, 0px); } 20% { transform: translate(-0.2px, 0.1px); } 40% { transform: translate(0.3px, -0.1px); } 60% { transform: translate(-0.1px, 0.2px); } 80% { transform: translate(0.1px, -0.2px); } 100% { transform: translate(0px, 0px); } }
+    @keyframes flameEffect { 0% { transform: scale(1) translateY(0); opacity: 0.3; } 50% { transform: scale(1.02) translateY(-1.5%); opacity: 0.5; } 100% { transform: scale(1) translateY(0); opacity: 0.3; } }
+    #wing-left, #wing-right { position: absolute; top: 23vh; width: 17vw; height: 100vh; background-size: contain; background-repeat: no-repeat; pointer-events: none; z-index: -1; transform: scale(1.9); opacity: 0.6; } /* Mise en arrière-plan et opacité réduite */
+    #wing-left { left: -5vw; background-image: url('https://fluffy-kashata-47db51.netlify.app/img/wing-left.png'); }
+    #wing-right { right: -2vw; background-image: url('https://fluffy-kashata-47db51.netlify.app/img/wing-right.png'); }
+
+  </style>
+</head>
+<body>
+  <div id="ui-container">
+    <!-- Entête -->
+    <header class="game-header">
+       <!-- ... Contenu de l'en-tête (inchangé) ... -->
+       <div class="header-left">
+        <div id="player-portrait"></div>
+        <div class="player-stats">
+          <div id="character-name">Chargement...</div>
+          <div class="health-container">
+            Santé: <span id="health-value">...</span> / <span id="max-health-value">...</span>
+          </div>
+          <div class="stats-line">
+            <span>RAP: <span id="stat-rapidite">...</span></span>
+            <span>COU: <span id="stat-courage">...</span></span>
+            <span>FOR: <span id="stat-force">...</span></span>
+            <span>HAB: <span id="stat-habilete">...</span></span>
+            <span>PSI: <span id="stat-psi">...</span>/<span id="stat-psiMax">...</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="header-buttons">
+        <button id="save-button" class="header-button">Sauvegarder</button>
+        <button id="load-button" class="header-button">Charger</button>
+        <button id="audio-toggle" class="header-button">Son</button>
+        <button id="back-to-creation" class="header-button">Retour Création</button>
+      </div>
+    </header>
+
+    <!-- Contenu principal -->
+    <main class="game-content">
+      <div id="locations-background"></div>
+      <div id="wing-left"></div>
+      <div id="wing-right"></div>
+
+      <!-- Wrapper pour Lieu/Narrative (caché pendant combat) -->
+      <div class="content-wrapper">
+          <h2 id="locations-title">Titre ici</h2>
+          <div class="text-container">
+              <p id="locations-description">Texte ici...</p>
+          </div>
+          <div id="choices-container" class="choices-grid">
+              <!-- Les boutons de choix normaux seront insérés ici par JS -->
+          </div>
+      </div>
+
+      <!-- Interface de Combat (cachée par défaut) -->
+      <div id="combat-ui">
+          <div id="combat-info">
+              <div id="combat-player-info">
+                  Joueur : <span id="combat-player-health">?</span> / <span id="combat-player-max-health">?</span> PV
+              </div>
+              <div id="combat-enemy-info">
+                  <h3 id="combat-enemy-name">Ennemi</h3>
+                  Santé : <span id="combat-enemy-health">?</span> / <span id="combat-enemy-max-health">?</span> PV
+              </div>
+          </div>
+          <div id="combat-actions">
+              <button id="combat-attack-btn">Attaquer</button>
+              <!-- Autres boutons (Fuir, Objet, PSI...) à ajouter ici -->
+          </div>
+           <div id="combat-log-container">
+                <span>Journal de Combat :</span>
+                <div id="combat-log">
+                    <!-- Les messages de combat apparaîtront ici -->
+                </div>
+            </div>
+      </div>
+
+    </main>
+
+    <!-- Sidebar -->
+    <aside class="game-sidebar">
+       <!-- ... Contenu de la sidebar (inchangé) ... -->
+        <!-- NOUVELLE SECTION: État Mental -->
+      <div class="sidebar-section" id="mental-health-section">
+        <h3>État Mental</h3>
+        <div class="sidebar-section-content">
+           Santé Mentale: <span id="mental-health-value" style="font-weight: bold; color: #fff;">...</span> / <span id="max-mental-health-value" style="font-weight: bold; color: #fff;">...</span>
+        </div>
+      </div>
+      <!-- FIN NOUVELLE SECTION -->
+
+      <div class="sidebar-section" id="inventory-section">
+        <h3>Inventaire</h3>
+        <div class="sidebar-section-content">
+          <ul id="player-inventory">
+            <li>Aucun objet</li>
+          </ul>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <h3>Effets Actifs / Phobies</h3>
+        <div class="sidebar-section-content">
+          <ul id="active-effects">
+            <li>Aucun effet</li>
+          </ul>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <h3>Lieux Visités</h3>
+        <div class="sidebar-section-content">
+          <ul id="visited-locations">
+            <li>Aucun lieu</li>
+          </ul>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Script principal -->
+  <script>
+    // ===== window.gameData INTÉGRÉ ET ÉTENDU =====
+    window.gameData = {
+        locations: {
+            'campanile-ruine':{title:"Campanile en ruine",description:`Une clairière abrite les vestiges d'un campanile frappé par la foudre...`,background:null,choices:[{text:"Explorer l'intérieur",destination:"interieur-campanile"},{text:"Retourner sur vos pas",destination:"sentier-est"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'interieur-campanile':{title:"Intérieur du campanile",description:`Les murs sont lézardés et recouverts de lierre...`,background:null,choices:[{text:"Revenir à l'extérieur",destination:"campanile-ruine"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'boudoir-mortuaire':{title:"Boudoir mortuaire",description:`Une pièce élégante et raffinée, pleine de parfums...`,background:null,choices:[{text:"Examiner les cercueils",destination:"examiner-cercueils"},{text:"Revenir dans le couloir",destination:"couloir-superieur"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'chapelle-chateau':{title:"Chapelle du Château",description:`Une ravissante chapelle parfumée d'encens...`,background:null,choices:[{text:"S'approcher de l'autel",destination:"examiner-autel"},{text:"Retourner dans le couloir",destination:"couloir-superieur"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'dedale-necrophages':{title:"Dédale des Nécrophages",description:`Un réseau de tunnels creusés à même la terre...`,background:null,choices:[{text:"Explorer un tunnel au hasard",destination:"explorer-dedale"},{text:"Tenter de revenir sur ses pas",destination:"crypte-dracula"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'cabinet-cire':{title:"Cabinet des Figures de cire",description:`Cet endroit est empli de mannequins d'un réalisme glaçant...`,background:null,choices:[{text:"Examiner les mannequins",destination:"examiner-mannequins"},{text:"Inspecter le chaudron de cire",destination:"examiner-chaudron"},{text:"Retourner sur vos pas (Galerie Est)",destination:"galerie-est"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'portail':{title:"Portail du Château",description:`Vous êtes devant les hautes grilles de fer forgé du Château de Dracula...`,background:"https://fluffy-kashata-47db51.netlify.app/img/porte_du_chateau.jpg",choices:[{text:"Prendre l'allée vers le nord",destination:"allee"},{text:"Examiner les alentours",destination:"examiner-portail"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'allee':{title:"Allée du Château",description:`L'allée carrossable qui relie le portail à la cour d'honneur...`,background:"https://raw.githubusercontent.com/brizoss/chateau-dracula-assets/4212d6845a41c07b62959c93f1031dfb97680410/img/allée_du_chateau4.jpg",choices:[{text:"Continuer vers le nord",destination:"cour-honneur"},{text:"Explorer le sentier à l'ouest",destination:"sentier-ouest"},{text:"Explorer le sentier à l'est",destination:"sentier-est"},{text:"Retourner au portail",destination:"portail"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'cour-honneur':{title:"Cour d'honneur",description:`Une étroite cour pavée, dominée par la sombre masse du Château.`,background:null,choices:[{text:"Aller vers la porte du Château (nord)",destination:"porte-chateau"},{text:"Descendre vers le jardin (est)",destination:"jardin-contrebas"},{text:"Visiter les dépendances (ouest)",destination:"dependances"},{text:"Emprunter le passage voûté (nord-ouest)",destination:"cour-ecuries"},{text:"Retourner vers l'allée (sud)",destination:"allee"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'porte-chateau':{title:"Porte d'entrée du Château",description:`La grande porte du Château, ornée de gros clous de bronze...`,background:"https://fluffy-kashata-47db51.netlify.app/img/porte_du_chateau.jpg",choices:[{text:"Frapper à la porte",destination:"frapper-porte"},{text:"Tenter d'ouvrir la porte",destination:"ouvrir-porte"},{text:"Retourner dans la cour d'honneur",destination:"cour-honneur"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'cimetiere':{title:"Cimetière familial",background:"https://fluffy-kashata-47db51.netlify.app/img/chatgpt%20image%201%20avr.%202025,%2023_06_58.png",description:`Des pierres tombales se dressent tout autour...`,choices:[{text:"Examiner les pierres tombales",destination:"examiner-tombes"},{text:"Explorer le caveau au sud-ouest",destination:"caveau-famille"},{text:"Aller vers l'est (retour Sentier Ouest)",destination:"sentier-ouest"},{text:"Prendre le sentier vers le nord",destination:"sentier-nord"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'crypte-dracula':{title:"Crypte de Dracula",description:`Votre état de comte mort vivant vous soumet à certaines règles particulières...\n\n[...]`,background:"https://fluffy-kashata-47db51.netlify.app/img/crypte.jpg",choices:[{text:"Utiliser Téléportation (coûte 1 PSI)",action:"usePsiPower",requiredCharacter:"dracula"},{text:"Examiner le sarcophage",destination:"examiner-sarcophage"},{text:"Rechercher un passage secret",action:"searchSecret"}]}, // Correction: action usePsiPower
+            'jardin-contrebas':{title:"Jardin en contrebas",description:`Un jardin envahi par des végétaux toxiques...`,background:"https://fluffy-kashata-47db51.netlify.app/img/jardin.jpg",choices:[{text:"Cueillir des plantes",destination:"cueillir-plantes"},{text:"Remonter vers la cour d'honneur",destination:"cour-honneur"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'caveau-famille':{title:"Caveau de famille",description:`Un petit caveau dissimulé derrière une grille en fer forgé.`,background:null,choices:[{text:"Ouvrir la grille et entrer",destination:"combat-zombie"},{text:"Retourner au cimetière",destination:"cimetiere"},{text:"Rechercher un passage secret",action:"searchSecret"}]}, // La destination "combat-zombie" sera gérée par loadLocation comme une narrative
+            'vestibule':{title:"Vestibule",description:`Le vestibule du Château, décoré de torches...`,background:"https://fluffy-kashata-47db51.netlify.app/img/vestibule1.jpg",choices:[{text:"Ouvrir la porte à deux battants (Nord)",destination:"galerie-ouest"},{text:"Examiner la table",destination:"examiner-table-vestibule"},{text:"Regarder vers la porte d'entrée (Sud)",destination:"porte-chateau"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'galerie-ouest':{title:"Galerie (partie ouest)",description:`Un long couloir traversant le Château...`,background:"https://fluffy-kashata-47db51.netlify.app/img/gallerie_ouest1.jpg",choices:[{text:"Aller vers la galerie est",destination:"galerie-est"},{text:"Prendre l'escalier en colimaçon",destination:"couloir-superieur"},{text:"Ouvrir la porte nord",destination:"fumoir"},{text:"Retourner vers le vestibule (porte sud)",destination:"vestibule"},{text:"Emprunter le passage étroit (est)",destination:"salle-musique"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'galerie-est':{title:"Galerie (partie est)",description:`Une galerie menant à des pièces secondaires...`,background:"https://fluffy-kashata-47db51.netlify.app/img/gallerie_est3.jpg",choices:[{text:"Aller vers la bibliothèque (porte Est)",destination:"bibliotheque"},{text:"Ouvrir la porte Nord 1",destination:"cabinet-cire"},{text:"Ouvrir la porte Nord 2",destination:"salon"},{text:"Retourner vers la galerie ouest",destination:"galerie-ouest"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'fumoir':{title:"Fumoir",description:`Une pièce ornée d'une cheminée imposante...`,background:"https://fluffy-kashata-47db51.netlify.app/img/fumoir5.jpg",choices:[{text:"Examiner la vitrine d'armes",destination:"examiner-vitrine"},{text:"Aller vers la porte ouest",destination:"salle-manger"},{text:"Aller vers la porte sud",destination:"galerie-ouest"},{text:"Aller vers la porte est",destination:"salon"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'salle-musique':{title:"Salle de musique",background:"https://fluffy-kashata-47db51.netlify.app/img/salle_de_musique.jpg",description:`Une pièce étroite avec un piano à queue...`,choices:[{text:"Examiner le piano",destination:"examiner-piano"},{text:"Aller vers la porte nord du mur ouest",destination:"salon"},{text:"Aller vers la porte sud du mur ouest",destination:"galerie-ouest"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'jardin-clos':{title:"Jardin clos",description:`Un jardin fermé et mystérieux, à l'abandon depuis longtemps...`,background:null,choices:[/*{text:"Chercher une sortie",destination:"chercher-sortie-jardin-clos"},*/ {text:"Revenir sur vos pas (Cour d'Honneur - supposition)", destination:"cour-honneur"},{text:"Rechercher un passage secret",action:"searchSecret"}]}, // destination manquante remplacée
+            'cour-interieure':{title:"Cour intérieure",description:`Une cour pavée cachée à l'intérieur du Château, entourée d'écuries apparemment vides...`,background:null,choices:[/*{text:"Chercher une sortie",destination:"chercher-sortie-cour-interieure"},*/{text:"Visiter les écuries",destination:"cour-ecuries"},{text:"Revenir sur vos pas (Crypte - Supposition via Téléport?)", destination:"crypte-dracula"},{text:"Rechercher un passage secret",action:"searchSecret"}]}, // destination manquante remplacée
+            'cuisine':{title:"Cuisine",description:`Une cuisine froide et silencieuse, emplie d'ustensiles anciens couverts de poussière...`,background:null,choices:[{text:"Examiner les ustensiles",destination:"examiner-cuisine"},{text:"Sortir par la porte Ouest",destination:"salle-manger"},{text:"Sortir par la porte Sud (vers Galerie Ouest)",destination:"galerie-ouest"},{text:"Monter l'escalier de service (Est)",destination:"couloir-superieur"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'bibliotheque':{title:"Bibliothèque",background:"https://fluffy-kashata-47db51.netlify.app/img/bibliotheque.jpg",description:`Cette pièce est à la fois une bibliothèque et un bureau...`,choices:[{text:"Examiner les livres",destination:"examiner-bibliotheque"},{text:"Examiner le bureau",destination:"examiner-bureau-biblio"},{text:"Retourner à la galerie est (Sud)",destination:"galerie-est"},{text:"Rechercher un passage secret",action:"searchSecret"}]}, // Correction: ajout .jpg à l'image
+            'salle-manger':{title:"Salle à manger",description:`Une grande salle à manger avec une table imposante...`,background:"https://fluffy-kashata-47db51.netlify.app/img/salle_a_manger.jpg",choices:[{text:"Examiner la table",destination:"examiner-table-manger"},{text:"Aller vers la porte Est (Fumoir)",destination:"fumoir"},{text:"Aller vers la porte Nord (Cuisine)",destination:"cuisine"},{text:"Aller vers la porte Sud (Galerie Glaces)",destination:"galerie-glaces"},{text:"Aller vers la porte Ouest (Vestibule)",destination:"vestibule"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'salon':{title:"Salon",description:`Un salon élégant avec des fauteuils confortables recouverts de housses...`,background:"https://fluffy-kashata-47db51.netlify.app/img/salon3.jpg",choices:[{text:"Examiner les meubles",destination:"examiner-salon"},{text:"Aller vers la porte Ouest (Fumoir)",destination:"fumoir"},{text:"Aller vers la porte Est (Salle Musique)",destination:"salle-musique"},{text:"Aller vers la porte Sud (Galerie Est)",destination:"galerie-est"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'cour-ecuries':{title:"Cour des écuries",description:`Une cour imprégnée de l'odeur du foin et du cheval... mais il n'y a aucun animal.`,background:null,choices:[{text:"Explorer les écuries",destination:"examiner-ecuries"},{text:"Retourner à la cour d'honneur (Sud)",destination:"cour-honneur"},{text:"Aller vers le verger (Est)",destination:"verger"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'sentier-est':{title:"Sentier Est",description:"Un sentier étroit s'enfonce dans la forêt sombre et silencieuse vers l'est.",background:"https://fluffy-kashata-47db51.netlify.app/img/porte_du_chateau1.jpg",choices:[{text:"Suivre le sentier vers l'Est",destination:"campanile-ruine"},{text:"Retourner à l'allée",destination:"allee"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'sentier-ouest':{title:"Sentier Ouest",description:"Ce sentier tortueux part vers l'ouest, entre des arbres aux formes menaçantes.",background:null,choices:[{text:"Suivre le sentier vers l'Ouest",destination:"cimetiere"},{text:"Retourner à l'allée",destination:"allee"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'sentier-nord':{title:"Sentier Nord",description:"Un chemin peu marqué monte vers le nord, s'éloignant du cimetière.",background:"https://fluffy-kashata-47db51.netlify.app/img/route_forestiere1.jpg",choices:[{text:"Continuer vers le Nord",destination:"lisiere-foret"},{text:"Retourner au cimetière",destination:"cimetiere"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'lisiere-foret':{title:"Lisière de la Forêt",description:"Le sentier débouche sur la lisière épaisse de la forêt entourant le château. Continuer semble dangereux.",background:null,choices:[{text:"Retourner sur le sentier nord",destination:"sentier-nord"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'couloir-superieur':{title:"Couloir Supérieur",description:"Un couloir sombre au premier étage, bordé de portes closes (chambres ?). Un escalier descend vers la Galerie Ouest, un autre monte vers le Chemin de Ronde.",background:null,choices:[/*{text:"Examiner la porte 1",destination:"examiner-porte-num-1"},*/{text:"Aller vers le Boudoir",destination:"boudoir-mortuaire"},{text:"Aller vers la Chapelle",destination:"chapelle-chateau"},{text:"Descendre vers la Galerie Ouest",destination:"galerie-ouest"},{text:"Monter vers le Chemin de Ronde",destination:"chemin-ronde"},{text:"Descendre par l'escalier de service (Cuisine)",destination:"cuisine"},{text:"Rechercher un passage secret",action:"searchSecret"}]}, // Porte 1 manquante commentée
+            'dependances':{title:"Dépendances",description:"Plusieurs petits bâtiments de service (remise, bûcher...) adossés au mur ouest de la cour. Ils semblent peu utilisés.",background:null,choices:[{text:"Fouiller les dépendances",destination:"fouiller-dependances"},{text:"Retourner à la Cour d'Honneur",destination:"cour-honneur"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'chemin-ronde':{title:"Chemin de Ronde",description:"Vous êtes sur le chemin de ronde du château. La vue est étendue mais le vent siffle sinistrement. Certaines sections sont écroulées.",background:null,choices:[{text:"Observer les alentours",destination:"observer-chemin-ronde"},{text:"Descendre vers le couloir supérieur",destination:"couloir-superieur"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'antre-pretre':{title:"Antre du Prêtre",description:"Une minuscule cachette secrète, à peine assez grande pour tenir debout. Une forte odeur d'ail et des crucifix sur les murs.",background:null,choices:[{text:"Examiner les lieux",destination:"examiner-antre-pretre"},{text:"Sortir (retour Crypte)",destination:"crypte-dracula"},{text:"Rechercher un autre passage secret",action:"searchSecret"}]}, // "Rechercher un autre passage" pointe sur la même action, ok
+            'galerie-glaces':{title:"Galerie des Glaces",description:"Une pièce entièrement tapissée de miroirs qui renvoient votre reflet (ou son absence ?) à l'infini. La lumière est éblouissante.",background:null,choices:[{text:"Examiner les miroirs",destination:"examiner-glaces"},{text:"Sortir vers la Salle à Manger",destination:"salle-manger"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            'verger':{title:"Verger",description:"Un ancien verger à l'abandon. Les arbres sont noueux et les fruits rabougris.",background:"https://fluffy-kashata-47db51.netlify.app/img/verger.jpg",choices:[{text:"Examiner les arbres",destination:"examiner-verger"},{text:"Retourner à la cour des écuries (Ouest)",destination:"cour-ecuries"},{text:"Rechercher un passage secret",action:"searchSecret"}]},
+            // AJOUTS POUR TESTS ET COMPLETION
+            'passage-secret-generique': {
+                title: "Passage Secret",
+                description: "Vous avez découvert un passage secret poussiéreux. Il semble mener quelque part...",
+                background: "https://raw.githubusercontent.com/brizoss/chateau-dracula-assets/main/img/passage_secret.jpg", // Image générique
+                choices: [
+                    { text: "Revenir sur vos pas", action: "goBackToPreviousLocation" }
+                ]
+            },
+            'fin-combat-test': {
+                title: "Après le combat",
+                description: "La créature gît à vos pieds. Vous pouvez maintenant continuer.",
+                choices: [
+                    { text: "Retourner au lieu précédent", action: "goBackToPreviousLocation" }
+                ]
+            }
+        }, // Ferme l'objet locations
+        narratives: {
+            'examiner-cercueils':{text:`Vous vous penchez sur les cercueils : ils semblent vides… à part peut-être une légère impression de mouvement dans l'un d'eux ?`,choices:[{text:"Retourner dans le boudoir",destination:"boudoir-mortuaire"}]},
+            'examiner-autel':{text:`L'autel est orné de symboles religieux puissants et semble rayonner d'une faible aura protectrice. Un petit flacon de cristal est posé dessus.`,choices:[{text:"Prendre le flacon", action:"genericTakeItem", itemToTake:"Parfum sacré"}], itemGained:{name:"Parfum sacré",type:"potion",effect:{type:"repel-undead",value:3},singleUse:true, description: "Repousse certaines créatures."}}, // Changé pour utiliser une action
+            'explorer-dedale':{text:`Les tunnels se ressemblent tous, l'air est vicié et vous entendez des grattements inquiétants...`,choices:[{text:"Continuer malgré tout (Risqué !)", action: "exploreDedaleFurther"},{text:"Faire demi-tour",destination:"crypte-dracula"}]}, // Ajout action pour "Continuer"
+            'examiner-mannequins':{text:`En vous approchant, vous réalisez à quel point chaque scène semble figée, presque trop parfaite. Un frisson vous parcourt.`,choices:[{text:"Examiner le chaudron de cire",destination:"examiner-chaudron"},{text:"Retourner au Cabinet",destination:"cabinet-cire"}]},
+            'examiner-chaudron':{text:`La cire fond lentement, dégageant une odeur douceâtre. Quelque chose brille faiblement au fond du liquide épais...`,choices:[{text:"Prendre la clé",action:"genericTakeItem", itemToTake:"Clé n°7"}],itemGained:{name:"Clé n°7",type:"key",number:7, description: "Ouvre la porte 7."}}, // Changé pour utiliser une action
+            'examiner-portail':{text:`Vous examinez attentivement les grilles massives. Elles semblent anciennes mais solides. Une serrure complexe est visible.`,choices:[{text:"Pousser la grille (elle n'est pas verrouillée) et prendre l'allée",destination:"allee"},{text:"Rester devant le portail",destination:"portail"}]},
+            'examiner-tombes':{text:`Vous examinez les pierres tombales érodées. La plupart des noms sont illisibles, mais l'atmosphère est lourde et oppressante.`,choices:[{text:"Retourner au cimetière",destination:"cimetiere"}]},
+            'examiner-sarcophage':{text:`Le sarcophage de granite contient un cercueil d'ébène parfaitement ajusté. Il semble incroyablement lourd et scellé par une force invisible. C'est votre lieu de repos.`,choices:[{text:"Retourner à la crypte",destination:"crypte-dracula"}],requiredCharacter:"dracula"},
+            'teleport-options':{text:`Où souhaitez-vous vous téléporter ? (Coûte 1 PSI)`, choices:[]}, // Les choix sont générés dynamiquement
+            'frapper-porte':{text:`Vous frappez lourdement à la porte massive. Le son résonne étrangement, mais personne ne répond. Un silence oppressant s'installe.`,choices:[{text:"Tenter d'ouvrir la porte",destination:"ouvrir-porte"},{text:"Retourner dans la cour d'honneur",destination:"cour-honneur"}]},
+            'ouvrir-porte':{text:`Vous poussez la lourde porte. Elle pivote lentement vers l'intérieur en grinçant sinistrement, révélant un vestibule sombre.`,choices:[{text:"Entrer dans le château",destination:"vestibule"}]},
+            'cueillir-plantes':{text:`Vous reconnaissez quelques herbes aux propriétés médicinales étranges, bien que potentiellement toxiques. Vous en cueillez prudemment quelques-unes.`,choices:[{text:"Prendre les plantes", action:"genericTakeItem", itemToTake:"Plantes médicinales"}],itemGained:{name:"Plantes médicinales",type:"potion",effect:{type:"health",value:20},singleUse:true, description: "Restaure un peu de santé."}}, // Changé pour utiliser une action
+            'examiner-piano':{text:`Vous vous approchez du piano à queue couvert de poussière. Les touches sont jaunies. Vous remarquez un petit compartiment secret sur le côté.`,choices:[{text:"Ouvrir le compartiment",destination:"compartiment-piano"},{text:"Jouer quelques notes",destination:"jouer-piano"},{text:"Retourner à la salle de musique",destination:"salle-musique"}]},
+            'jouer-piano':{text:`Vous jouez quelques notes hésitantes. Le son est désaccordé et lugubre, résonnant étrangement dans la pièce silencieuse.`,choices:[{text:"Examiner le compartiment",destination:"compartiment-piano"},{text:"Retourner à la salle de musique",destination:"salle-musique"}]},
+            'compartiment-piano':{text:`Dans le compartiment secret, vous trouvez une petite clé en argent finement ciselée.`,choices:[{text:"Prendre la clé", action:"genericTakeItem", itemToTake:"Clé n°3"}],itemGained:{name:"Clé n°3",type:"key",number:3, description: "Ouvre la porte 3."}}, // Changé pour utiliser une action
+            'examiner-vitrine': {
+                 text: `La vitrine fermée à clé expose plusieurs armes anciennes : pistolets à silex, épées rouillées, et un poignard orné d'une gemme sombre.`,
+                 choices: [
+                     { text: "Tenter de forcer la vitrine (test FOR)", action: "forceVitrine" },
+                     { text: "Prendre le poignard (si vitrine ouverte)", action: "prendrePoignardAction", condition: "vitrine_ouverte" }, // Utilise l'action
+                     { text: "Retourner au fumoir", destination: "fumoir" }
+                 ]
+            },
+            'prendre-poignard': { // Narrative utilisée par l'action prendrePoignardAction
+                 text: `Vous prenez le poignard orné. La gemme semble vous observer froidement.`,
+                 itemGained: { name: "Poignard orné", type: "weapon", damage: 5, special: "possible_curse", description: "Un poignard ancien avec une gemme sombre." }
+                 // Pas de choices ici, l'action gère le retour
+            },
+            'combat-zombie':{ // Narrative utilisée par startCombat quand appelé depuis 'caveau-famille'
+                text:"La grille grince et s'ouvre. En entrant dans le caveau, une forme titubante se lève d'une alcôve sombre... Un zombie aux orbites vides se jette sur vous !",
+                choices:[
+                     { text: "Affronter le Zombie !", action: "startCombat", combatTarget: 'zombie' },
+                     { text: "Tenter de fuir !", destination: "cimetiere", effects: [{ type: 'updateStat', stat: 'courage', value: -5 }, { type: 'updateStat', stat: 'mentalHealth', value: -2 }] } // Exemple de fuite
+                ]
+             },
+            'examiner-table-vestibule':{text:"La lourde table en chêne est recouverte d'une épaisse couche de poussière. Il n'y a rien dessus d'intéressant.",choices:[{text:"Retourner dans le vestibule",destination:"vestibule"}]},
+            // Narratives pour destinations manquantes
+             'chercher-sortie-jardin-clos': { text: "Vous cherchez une issue dans ce jardin envahi par la végétation. Après quelques efforts, vous retrouvez le chemin vers la Cour d'Honneur.", choices: [{ text: "Retourner à la Cour d'Honneur", destination: "cour-honneur" }] },
+             'chercher-sortie-cour-interieure': { text: "La cour intérieure semble sans issue évidente à part les écuries ou le passage par lequel vous êtes arrivé (probablement via téléportation?).", choices: [{ text: "Visiter les écuries", destination: "cour-ecuries" }, { text: "Essayer de retourner d'où vous venez", action: "goBackToPreviousLocation" }] },
+             'examiner-cuisine': { text: "Les ustensiles sont rouillés et couverts de toiles d'araignées. Un grand âtre froid domine la pièce.", choices: [{ text: "Retourner", destination: "cuisine" }] }, // Destination=cuisine pour rester et choisir autre chose
+             'examiner-bibliotheque': { text: "Les étagères ploient sous le poids de grimoires anciens et de livres reliés en cuir. Une odeur de papier jauni et de poussière flotte dans l'air.", choices: [{ text: "Examiner le bureau", destination: "examiner-bureau-biblio" }, { text: "Retourner", destination: "bibliotheque" }] },
+             'examiner-bureau-biblio': { text: "Le bureau en bois sombre est couvert de parchemins et d'instruments d'écriture desséchés. Un tiroir semble coincé.", choices: [{ text: "Tenter d'ouvrir le tiroir (Test HAB?)", action: "tryOpenDrawer" }, { text: "Examiner les livres", destination: "examiner-bibliotheque" }, { text: "Retourner", destination: "bibliotheque" }] },
+             'examiner-table-manger': { text: "La longue table de banquet est dressée avec de la vaisselle en argent ternie et des chandeliers couverts de cire figée. Aucun signe de repas récent.", choices: [{ text: "Retourner", destination: "salle-manger" }] },
+             'examiner-salon': { text: "Les housses blanches recouvrant les meubles ressemblent à des linceuls dans la pénombre. Un portrait au mur semble vous suivre du regard.", choices: [{ text: "Retourner", destination: "salon" }] },
+             'examiner-ecuries': { text: "Les boxes sont vides, mais l'odeur persistante de cheval et de foin suggère une présence récente... ou fantomatique.", choices: [{ text: "Retourner à la cour des écuries", destination: "cour-ecuries" }] },
+             'examiner-porte-num-1': { text: "La porte numéro 1 est en bois épais et fermée à clé. Elle porte le numéro '1' gravé grossièrement.", choices: [{ text: "Tenter de l'ouvrir (Nécessite Clé n°1)", action: "tryOpenDoor", doorNumber: 1, requiredItem: "Clé n°1" }, { text: "Retourner au couloir", destination: "couloir-superieur" }] },
+             'fouiller-dependances': { text: "Vous fouillez les remises et le bûcher. Vous trouvez quelques outils rouillés et du bois sec, mais rien de particulièrement utile ou précieux.", choices: [{ text: "Prendre du bois sec (utile?)", action: "genericTakeItem", itemToTake:"Bois sec" }, { text: "Retourner à la Cour d'Honneur", destination: "cour-honneur" }], itemGained: { name: "Bois sec", type: "misc", description: "Pourrait servir à faire un feu." } }, // Ajout item Bois sec
+             'observer-chemin-ronde': { text: "D'ici, vous dominez les alentours sombres du château. La forêt s'étend à perte de vue, et le vent glacial vous fait frissonner.", choices: [{ text: "Descendre", destination: "couloir-superieur" }] },
+             'examiner-antre-pretre': { text: "Des gousses d'ail séchées pendent au plafond. Un livre de prières usé est ouvert sur une petite caisse en bois.", choices: [{ text: "Prendre le livre de prières", action: "genericTakeItem", itemToTake:"Livre de prières" }, { text: "Sortir (retour Crypte)", destination: "crypte-dracula" }], itemGained: { name: "Livre de prières", type: "misc", description: "Contient des prières et des symboles sacrés." } }, // Ajout item Livre
+             'examiner-glaces': { text: "Votre reflet (ou son absence pour Dracula) vous fixe depuis une myriade de miroirs. La lumière semble piégée ici, créant une atmosphère irréelle et désorientante.", choices: [{ text: "Sortir vers la Salle à Manger", destination: "salle-manger" }] },
+             'examiner-verger': { text: "Les branches tordues ressemblent à des griffes squelettiques. Quelques pommes ratatinées jonchent le sol.", choices: [{ text: "Ramasser une pomme (peu appétissant)", action: "genericTakeItem", itemToTake:"Pomme ratatinée" }, { text: "Retourner à la cour des écuries", destination: "cour-ecuries" }], itemGained: { name: "Pomme ratatinée", type: "food", effect: { type: "health", value: 1 }, singleUse: true, description: "Une vieille pomme ridée." } } // Ajout item Pomme
+            // ... (autres narratives si nécessaire)
+        }, // Ferme l'objet narratives
+        enemies: {
+            'zombie': { name: "Zombie", health: 25, maxHealth: 25, stats: { rapidite: 1, courage: 6, force: 3, habilete: 2, psi: 0 }, specialEffects: [ { trigger: "roll", value: [11, 12], effect: "mycose", damage: 5 } ], loot: { name: "Élixir de Régénération", type: "potion", effect: { type: "health", value: 50 }, singleUse: true, description: "Restaure une bonne quantité de santé." } },
+            // ... (autres ennemis)
+        }, // Ferme l'objet enemies
+        randomEvents: [
+            {
+                name: "Tonnerre",
+                description: "Un violent coup de tonnerre retentit, faisant trembler les murs du château...",
+                effect: function() { displayRollResult("BOOOM! Le tonnerre gronde au loin."); }, // Utilise displayRollResult
+                probability: 0.1
+            },
+            {
+                name: "Courant d'air glacial",
+                description: "Un courant d'air soudain et glacial vous enveloppe, porteur de murmures indistincts.",
+                effect: function() {
+                    displayRollResult("Brrr... Un frisson vous parcourt l'échine."); // Utilise displayRollResult
+                    applyEffects([{ type: 'updateStat', stat: 'mentalHealth', value: -1 }]);
+                },
+                probability: 0.15
+            }
+            // ... (autres événements ici)
+        ], // Ferme le tableau randomEvents
+        secretPassages: {
+            "portail": "passage-secret-generique", // Test
+            "allee": "cimetiere",
+            "cour-honneur": "jardin-clos",
+            "crypte-dracula": "antre-pretre",
+            "galerie-ouest": "passage-secret-generique",
+            "bibliotheque": "passage-secret-generique",
+            "fumoir": "passage-secret-generique",
+            "cuisine": "passage-secret-generique",
+            "couloir-superieur": "passage-secret-generique",
+             "antre-pretre": "crypte-dracula" // Permet de ressortir
+            // ... (autres passages)
+        }, // Ferme l'objet secretPassages
+        items: { // Complété avec les items des narratives/actions
+            "pieu": { name: "Pieu en bois de pommier", description: "Un pieu taillé dans du bois de pommier, efficace contre certains êtres...", type: "weapon", damage: 10, specialEffect: { type: "vampire-kill", condition: "double-6" } },
+            "Clé n°1": { name: "Clé n°1", description: "Ouvre la porte 1.", type: "key", number: 1 },
+            "Clé n°3": { name: "Clé n°3", description: "Ouvre la porte 3.", type: "key", number: 3 },
+            "Clé n°7": { name: "Clé n°7", description: "Ouvre la porte 7.", type: "key", number: 7 },
+            "Poignard orné": { name: "Poignard orné", description: "Un poignard ancien avec une gemme sombre. Semble maudit.", type: "weapon", damage: 5, special:"possible_curse" },
+            "Parfum sacré": { name: "Parfum sacré", description: "Une fiole contenant un liquide doré qui repousse certaines créatures.", type:"potion", effect:{type:"repel-undead",value:3}, singleUse:true },
+            "Plantes médicinales": { name: "Plantes médicinales", description: "Un bouquet d'herbes étranges qui restaure un peu de santé.", type:"potion", effect:{type:"health",value:20}, singleUse:true },
+            "Élixir de Régénération": { name: "Élixir de Régénération", type: "potion", effect: { type: "health", value: 50 }, singleUse: true, description: "Restaure une bonne quantité de santé." },
+            "Bois sec": { name: "Bois sec", type: "misc", description: "Pourrait servir à faire un feu." },
+            "Livre de prières": { name: "Livre de prières", type: "misc", description: "Contient des prières et des symboles sacrés. Peut rassurer." },
+            "Pomme ratatinée": { name: "Pomme ratatinée", type: "food", effect: { type: "health", value: 1 }, singleUse: true, description: "Une vieille pomme ridée. Mieux que rien?" }
+            // ... autres items si nécessaire
+        }, // Ferme l'objet items
+        numberedKeys: { // Association numéro de porte -> clé nécessaire (pour l'action tryOpenDoor)
+            1: "Clé n°1",
+            3: "Clé n°3", // Si on ajoute une porte 3
+            7: "Clé n°7"  // Si on ajoute une porte 7
+        },
+
+        // ===== RENCONTRES DYNAMIQUES =====
+        encounters: {
+            'hallucination_corridor': {
+                id: 'hallucination_corridor',
+                triggerConditions: [
+                    { type: 'location', value: 'galerie-ouest' },
+                    { type: 'mentalHealth', comparison: '<', value: 60 }
+                ],
+                probability: 0.7,
+                onceOnly: true,
+                title: "Hallucination Fugace",
+                description: "Alors que vous avancez dans la galerie sinistre, les ombres sur les murs semblent s'étirer, danser et murmurer votre nom... Votre esprit vous joue-t-il des tours ?",
+                choices: [
+                    { text: "Secouer la tête et continuer vers l'Est", destination: "galerie-est", effects: [{ type: 'updateStat', stat: 'mentalHealth', value: -5 }] },
+                    { text: "Reculer prudemment vers le Vestibule", destination: "vestibule" },
+                    { text: "Prendre un moment pour reprendre vos esprits", action: "regainComposure", effects: [{ type: 'updateStat', stat: 'mentalHealth', value: +5 }] }
+                ],
+                effectsOnTrigger: [
+                    { type: 'updateStat', stat: 'mentalHealth', value: -10 },
+                    { type: 'setFlag', flag: 'encountered_hallucination_corridor', value: true }
+                ]
+            },
+             'whispers_library': {
+                 id: 'whispers_library',
+                 triggerConditions: [
+                     { type: 'location', value: 'bibliotheque' },
+                     { type: 'mentalHealth', comparison: '<', value: 75 }
+                 ],
+                 probability: 0.4,
+                 onceOnly: false, // Peut se répéter
+                 title: "Murmures dans les Livres",
+                 description: "Le silence de la bibliothèque est rompu par de faibles chuchotements semblant émaner des étagères elles-mêmes. Des secrets oubliés ou le fruit de votre imagination ?",
+                 choices: [
+                     { text: "Ignorer et examiner le bureau", destination: "examiner-bureau-biblio", effects: [{ type: 'updateStat', stat: 'mentalHealth', value: -3 }] },
+                     { text: "Tendre l'oreille attentivement (Test PSI?)", action: "listenWhispers", effects: [{ type: 'updateStat', stat: 'courage', value: +1 }] },
+                     { text: "Quitter précipitamment la bibliothèque", destination: "galerie-est", effects: [{ type: 'updateStat', stat: 'mentalHealth', value: -5 }] }
+                 ],
+                 effectsOnTrigger: [
+                     { type: 'updateStat', stat: 'mentalHealth', value: -2 }
+                     // Ne met pas de flag car onceOnly: false
+                 ]
+            }
+        } // Ferme l'objet encounters
+    }; // FIN DE window.gameData
+
+    // ===== Variables Globales =====
+    let currentEncounter = null; // Stocke l'état de la rencontre active
+    let currentCombatState = null; // Stocke l'état du combat en cours
+    window.audioEnabled = true; // État audio par défaut
+
+    // ===== Fonctions Utilitaires et Gestion d'État =====
+
+    function loadGameState() {
+        try {
+            const savedState = localStorage.getItem('chateauDraculaState');
+            if (savedState) {
+                window.gameState = JSON.parse(savedState);
+                // --- Initialisation robuste des champs manquants ---
+                if (!window.gameState.character) { // Vérif essentielle
+                   console.error("Sauvegarde invalide : personnage manquant.");
+                   localStorage.removeItem('chateauDraculaState');
+                   return false;
+                }
+                if (!window.gameState.stats) window.gameState.stats = {}; // Initialise si stats manquent
+                const defaultStats = { health: 100, maxHealth: 100, mentalHealth: 100, maxMentalHealth: 100, rapidite: 5, courage: 5, force: 5, habilete: 5, psi: 0, psiMax: 0 };
+                for(const stat in defaultStats) {
+                     if (window.gameState.stats[stat] === undefined) {
+                        // Donner une valeur de base si la stat manque complètement
+                         window.gameState.stats[stat] = defaultStats[stat];
+                     }
+                }
+                 // Assurer que maxHealth/maxMentalHealth sont au moins égaux à la valeur actuelle
+                 if(window.gameState.stats.maxHealth < window.gameState.stats.health) window.gameState.stats.maxHealth = window.gameState.stats.health;
+                 if(window.gameState.stats.maxMentalHealth < window.gameState.stats.mentalHealth) window.gameState.stats.maxMentalHealth = window.gameState.stats.mentalHealth;
+
+                if (!window.gameState.flags) window.gameState.flags = {};
+                if (!window.gameState.inventory) window.gameState.inventory = [];
+                if (!window.gameState.visitedLocations) window.gameState.visitedLocations = [];
+                if (!window.gameState.currentLocation) {
+                    // Définir lieu de départ si manquant après chargement
+                    window.gameState.currentLocation = (window.gameState.character === "dracula") ? "crypte-dracula" : "allee";
+                }
+                if (!window.gameState.previousLocation) window.gameState.previousLocation = null; // Ou gameState.currentLocation?
+
+                console.log("État du jeu chargé et validé:", window.gameState);
+                return true;
+            } else {
+                console.warn("Aucun état de jeu trouvé");
+                return false;
+            }
+        } catch (error) {
+            console.error("Erreur lors du chargement ou de la validation de l'état:", error);
+            localStorage.removeItem('chateauDraculaState'); // Nettoyer état corrompu/invalide
+            return false;
+        }
+    }
+
+    function saveGameState() {
+        if (!window.gameState) {
+            console.error("Impossible de sauvegarder: gameState n'existe pas");
+            return false;
+        }
+        try {
+            // Petite validation avant sauvegarde
+            if(!window.gameState.character || !window.gameState.currentLocation || !window.gameState.stats) {
+                console.error("Tentative de sauvegarde d'un état invalide. Annulation.", window.gameState);
+                return false;
+            }
+            localStorage.setItem('chateauDraculaState', JSON.stringify(window.gameState));
+            console.log("État du jeu sauvegardé:", JSON.parse(JSON.stringify(window.gameState))); // Log une copie pour éviter les problèmes d'affichage d'objets mutés
+            return true;
+        } catch (error) {
+            console.error("Erreur lors de la sauvegarde:", error);
+            return false;
+        }
+    }
+
+    function hasItem(itemIdOrName) {
+        if (!window.gameState || !window.gameState.inventory) return false;
+        return window.gameState.inventory.some(item => {
+            const checkName = (typeof item === 'object' ? item.name : item);
+            return checkName === itemIdOrName;
+        });
+    }
+
+    function addItemToInventory(itemDataOrName) {
+        if (!window.gameState || !window.gameState.inventory) {
+            console.error("Impossible d'ajouter l'objet: gameState.inventory non initialisé.");
+            return null; // Indiquer l'échec
+        }
+
+        let itemToAdd = null;
+        let baseItemData = null; // Pour stocker les data de gameData.items
+        let itemName = null;
+
+        // --- Déterminer le nom et les données de base ---
+        if (typeof itemDataOrName === 'string') {
+            itemName = itemDataOrName;
+            if (window.gameData.items && window.gameData.items[itemName]) {
+                baseItemData = window.gameData.items[itemName];
+            } else {
+                 console.warn(`Item '${itemName}' non trouvé dans gameData.items. Ajout avec nom seul.`);
+            }
+        } else if (typeof itemDataOrName === 'object' && itemDataOrName.name) {
+            itemName = itemDataOrName.name;
+            baseItemData = itemDataOrName; // Utiliser l'objet fourni comme base
+            // On pourrait aussi chercher dans gameData.items pour compléter si besoin
+        } else {
+            console.error("Impossible d'ajouter l'objet: données invalides", itemDataOrName);
+            return null;
+        }
+
+        // --- Créer l'objet à ajouter ---
+        // On copie les propriétés de baseItemData s'il existe, sinon on crée un objet simple
+        itemToAdd = baseItemData ? { ...baseItemData } : { name: itemName };
+        // Assurer que le nom est correct
+        if (!itemToAdd.name) itemToAdd.name = itemName;
+
+        // --- Vérifier si déjà possédé ---
+        if (hasItem(itemToAdd.name)) {
+            console.log(`Objet '${itemToAdd.name}' déjà présent dans l'inventaire.`);
+            alert(`Vous possédez déjà : ${itemToAdd.name}`);
+            return null;
+        }
+
+        // --- Ajouter à l'inventaire ---
+        window.gameState.inventory.push(itemToAdd);
+        console.log(`Objet ajouté: ${itemToAdd.name}`, itemToAdd);
+        updateInventoryDisplay();
+        saveGameState();
+        alert(`Vous avez trouvé : ${itemToAdd.name}`);
+        return itemToAdd;
+    }
+
+    function removeItemFromInventory(itemName) {
+         if (!window.gameState || !window.gameState.inventory) return false;
+         const initialLength = window.gameState.inventory.length;
+         window.gameState.inventory = window.gameState.inventory.filter(item => {
+              const checkName = (typeof item === 'object' ? item.name : item);
+              return checkName !== itemName;
+         });
+         const removed = window.gameState.inventory.length < initialLength;
+         if (removed) {
+              console.log(`Objet retiré: ${itemName}`);
+              updateInventoryDisplay();
+              saveGameState();
+         } else {
+             console.warn(`Tentative de retirer un objet inexistant: ${itemName}`);
+         }
+         return removed;
+    }
+
+
+    function applyEffects(effectsArray) {
+        if (!effectsArray || !Array.isArray(effectsArray) || !window.gameState) return;
+
+        console.log("Application des effets :", effectsArray);
+        let statsChanged = false;
+        let flagsChanged = false;
+        let inventoryChanged = false; // Nouveau flag pour l'inventaire
+
+        effectsArray.forEach(effect => {
+            try {
+                switch (effect.type) {
+                    case 'updateStat':
+                        if (window.gameState.stats && window.gameState.stats[effect.stat] !== undefined) {
+                            const oldValue = window.gameState.stats[effect.stat];
+                            window.gameState.stats[effect.stat] += effect.value;
+                            // Clamp values
+                            if (effect.stat === 'health') {
+                                window.gameState.stats.health = Math.max(0, Math.min(window.gameState.stats.health, window.gameState.stats.maxHealth || 100));
+                            } else if (effect.stat === 'mentalHealth') {
+                                window.gameState.stats.mentalHealth = Math.max(0, Math.min(window.gameState.stats.mentalHealth, window.gameState.stats.maxMentalHealth || 100));
+                             } else if (effect.stat === 'psi') {
+                                 window.gameState.stats.psi = Math.max(0, Math.min(window.gameState.stats.psi, window.gameState.stats.psiMax || 0));
+                             }
+                             // ... autres clamps ...
+
+                             if (window.gameState.stats[effect.stat] !== oldValue) {
+                                 statsChanged = true;
+                                 console.log(`Stat ${effect.stat} mise à jour de ${oldValue} à ${window.gameState.stats[effect.stat]}`);
+                             }
+                        } else { console.warn(`Stat non trouvée ou invalide pour l'effet: ${effect.stat}`); }
+                        break;
+                    case 'setFlag':
+                        if (!window.gameState.flags) window.gameState.flags = {};
+                         if (window.gameState.flags[effect.flag] !== effect.value) {
+                              window.gameState.flags[effect.flag] = effect.value;
+                              console.log(`Flag ${effect.flag} mis à ${effect.value}`);
+                              flagsChanged = true;
+                         }
+                        break;
+                    case 'addItem':
+                         if (effect.item) {
+                             const added = addItemToInventory(effect.item); // addItemToInventory gère déjà l'alerte/log/save/updateUI
+                             if (added) inventoryChanged = true; // Marquer si un changement a eu lieu
+                         } else { console.warn("Effet 'addItem' sans données d'item:", effect); }
+                         break;
+                    case 'removeItem':
+                         if (effect.item) {
+                              const removed = removeItemFromInventory(effect.item); // removeItemFromInventory gère déjà log/save/updateUI
+                              if (removed) inventoryChanged = true; // Marquer si un changement a eu lieu
+                         } else { console.warn("Effet 'removeItem' sans nom d'item:", effect); }
+                         break;
+                    default:
+                        console.warn(`Type d'effet inconnu: ${effect.type}`);
+                }
+            } catch (error) {
+                console.error("Erreur lors de l'application de l'effet:", effect, error);
+            }
+        });
+
+        // Mettre à jour l'UI des stats si elles ont changé
+        if (statsChanged) {
+             updateStatsDisplay(); // Met à jour toutes les stats affichées
+        }
+        // Pas besoin de rafraîchir l'inventaire ici, car add/remove le font déjà
+
+        // Sauvegarder si qqch a changé (stats ou flags). L'inventaire sauvegarde déjà dans ses fonctions.
+        if (statsChanged || flagsChanged) {
+             saveGameState();
+        }
+
+        // Recharger les choix si les flags ont changé pour mettre à jour les conditions
+         if (flagsChanged) {
+            const currentViewData = getCurrentViewData();
+            if (currentViewData) {
+                 updateLocationChoices(currentViewData);
+            }
+         }
+    }
+
+    // ===== Mise à jour de l'interface =====
+
+    function updateCharacterDisplay() { /* ... (inchangé) ... */
+        if (!window.gameState || !window.gameState.character) return;
+        const charNameElement = document.getElementById('character-name');
+        const portraitElement = document.getElementById('player-portrait');
+        if (charNameElement) {
+            let displayedName = "Nom inconnu";
+            if (window.gameState.character === "jonathan") displayedName = "Jonathan Harker";
+            else if (window.gameState.character === "dracula") displayedName = "Comte Dracula";
+            charNameElement.textContent = displayedName;
+        }
+        if (portraitElement) {
+            let portraitUrl = "";
+            if (window.gameState.character === "jonathan") portraitUrl = "https://raw.githubusercontent.com/brizoss/chateau-dracula-assets/f98913b21c18fe694f78179011c1655ccba1fc4c/img/jonathan_harker_portrait.png";
+            else if (window.gameState.character === "dracula") portraitUrl = "https://raw.githubusercontent.com/brizoss/chateau-dracula-assets/a4b296d8cc1c3309159f33e810b303513ca2ce4d/img/chauve-souris.png";
+            portraitElement.style.backgroundImage = portraitUrl ? `url('${portraitUrl}')` : 'none';
+            portraitElement.style.backgroundColor = portraitUrl ? 'transparent' : '#300';
+        }
+    }
+    function updateStatsDisplay() { /* ... (inchangé) ... */
+        if (!window.gameState || !window.gameState.stats) return;
+        const stats = ['rapidite', 'courage', 'force', 'habilete', 'psi'];
+        stats.forEach(stat => {
+            const element = document.getElementById(`stat-${stat}`);
+            if (element) element.textContent = window.gameState.stats[stat] ?? '??';
+        });
+        const healthElement = document.getElementById('health-value');
+        const maxHealthElement = document.getElementById('max-health-value');
+        if (healthElement) healthElement.textContent = window.gameState.stats.health ?? '??';
+        if (maxHealthElement) maxHealthElement.textContent = window.gameState.stats.maxHealth ?? '??';
+        const psiMaxElement = document.getElementById('stat-psiMax');
+        if (psiMaxElement) psiMaxElement.textContent = window.gameState.stats.psiMax ?? '??';
+        updateMentalHealthDisplay();
+    }
+    function updateMentalHealthDisplay() { /* ... (inchangé) ... */
+        if (!window.gameState || !window.gameState.stats) return;
+        const mhValue = document.getElementById('mental-health-value');
+        const maxMhValue = document.getElementById('max-mental-health-value');
+        if (mhValue) mhValue.textContent = window.gameState.stats.mentalHealth ?? '??';
+        if (maxMhValue) maxMhValue.textContent = window.gameState.stats.maxMentalHealth ?? '??';
+    }
+    function updateVisitedLocationsDisplay() { /* ... (inchangé) ... */
+        if (!window.gameState) return;
+        const visitedList = document.getElementById('visited-locations');
+        if (!visitedList) return;
+        visitedList.innerHTML = '';
+        const visited = window.gameState.visitedLocations || [];
+        if (visited.length === 0) {
+            const emptyItem = document.createElement('li');
+            emptyItem.textContent = 'Aucun lieu';
+            visitedList.appendChild(emptyItem);
+            return;
+        }
+        const reversedVisited = [...visited].reverse();
+        reversedVisited.forEach(locationId => {
+            const listItem = document.createElement('li');
+            let locationTitle = locationId;
+            if (window.gameData && window.gameData.locations && window.gameData.locations[locationId]) {
+                locationTitle = window.gameData.locations[locationId].title || locationId;
+            }
+            listItem.textContent = locationTitle;
+            if (locationId !== window.gameState.currentLocation && !currentCombatState) { // Désactiver pendant combat aussi
+                listItem.style.cursor = 'pointer';
+                listItem.onclick = () => loadLocation(locationId);
+                 listItem.onmouseover = () => listItem.style.color = '#ffaaaa'; // Effet hover simple
+                 listItem.onmouseout = () => listItem.style.color = '';
+            } else {
+                 listItem.style.fontWeight = (locationId === window.gameState.currentLocation) ? 'bold' : 'normal';
+                 listItem.style.cursor = 'default';
+                 listItem.style.color = (locationId === window.gameState.currentLocation) ? '#fff' : '#aaa'; // Griser si pas actuel
+            }
+            visitedList.appendChild(listItem);
+        });
+    }
+
+    // MODIFIÉ : updateInventoryDisplay pour ajouter la classe et l'onclick
+    function updateInventoryDisplay() {
+      if (!window.gameState) return;
+      const inventoryList = document.getElementById('player-inventory');
+      if (!inventoryList) return;
+      inventoryList.innerHTML = '';
+      const inventory = window.gameState.inventory || [];
+      if (inventory.length === 0) {
+        const emptyItem = document.createElement('li');
+        emptyItem.textContent = 'Aucun objet';
+        inventoryList.appendChild(emptyItem);
+        return;
+      }
+
+      inventory.forEach(item => {
+        const listItem = document.createElement('li');
+        let name = 'Objet inconnu';
+        let description = null;
+        let isUsable = false; // Flag pour déterminer si l'objet est utilisable via clic
+
+        // --- Récupérer nom et description ---
+        let itemData = null; // Données de base de l'objet
+        if (typeof item === 'string') {
+             name = item;
+             if (window.gameData.items && window.gameData.items[name]) {
+                 itemData = window.gameData.items[name];
+                 description = itemData.description;
+             }
+        } else if (typeof item === 'object' && item.name) {
+            name = item.name;
+            description = item.description;
+            itemData = item; // Utiliser l'objet de l'inventaire comme source de données
+            // Chercher aussi dans gameData.items si la description manque dans l'inventaire
+            if (!description && window.gameData.items && window.gameData.items[name]) {
+                 description = window.gameData.items[name].description;
+                 // Si itemData n'a pas été défini par l'objet, le prendre de gameData
+                 if (!itemData) itemData = window.gameData.items[name];
+            }
+        }
+
+        listItem.textContent = name;
+        if (description) {
+          listItem.setAttribute('data-tooltip', description);
+        }
+
+        // --- Vérifier si l'objet est utilisable (potion, nourriture) ---
+        if (itemData && (itemData.type === 'potion' || itemData.type === 'food')) {
+            isUsable = true;
+        }
+        // Ajouter d'autres types utilisables ici (ex: itemData.type === 'scroll')
+
+        // --- Ajouter classe et onclick si utilisable ---
+        if (isUsable && !currentCombatState) { // Ne pas permettre l'utilisation d'item hors combat pour l'instant
+            listItem.classList.add('inventory-item');
+            // Nettoyer le nom pour l'attribut onclick (échapper les apostrophes)
+            const cleanName = name.replace(/'/g, "\\'");
+            listItem.setAttribute('onclick', `tryUseItem('${cleanName}')`);
+        } else {
+            listItem.style.cursor = 'default'; // Curseur normal si non utilisable ou en combat
+        }
+
+        inventoryList.appendChild(listItem);
+      });
+    }
+
+    function updateUIFromGameState() {
+      updateCharacterDisplay();
+      updateStatsDisplay(); // Inclut mentalHealth
+      updateInventoryDisplay(); // Maintenant interactif
+      updateVisitedLocationsDisplay();
+       // Mettre à jour l'état actif/inactif des boutons principaux (ex: désactiver pendant combat?)
+       const headerButtons = document.querySelectorAll('.header-button');
+       headerButtons.forEach(button => {
+           // Exemple: désactiver Sauver/Charger/Retour pendant le combat
+           if (button.id === 'save-button' || button.id === 'load-button' || button.id === 'back-to-creation') {
+                button.disabled = !!currentCombatState;
+           }
+       });
+    }
+
+    function setupUIButtons() { /* ... (inchangé) ... */
+        const saveButton = document.getElementById('save-button');
+        if (saveButton) saveButton.onclick = () => { const saved = saveGameState(); alert(saved ? "Partie sauvegardée." : "Erreur sauvegarde."); };
+        const loadButton = document.getElementById('load-button');
+        if (loadButton) loadButton.onclick = () => {
+            if (currentCombatState) { alert("Impossible de charger pendant un combat."); return; }
+            const loaded = loadGameState();
+            if (loaded && window.gameState) { updateUIFromGameState(); loadLocation(window.gameState.currentLocation); alert("Partie chargée."); }
+            else { alert("Chargement échoué."); }
+        };
+        const audioButton = document.getElementById('audio-toggle');
+        if (audioButton) {
+            audioButton.textContent = window.audioEnabled ? 'Son' : 'Son (off)';
+            audioButton.onclick = () => { window.audioEnabled = !window.audioEnabled; audioButton.textContent = window.audioEnabled ? 'Son' : 'Son (off)'; console.log("Audio:", window.audioEnabled); };
+        }
+        const backButton = document.getElementById('back-to-creation');
+        if (backButton) backButton.onclick = () => {
+            if (currentCombatState) { alert("Impossible de quitter pendant un combat."); return; }
+            if (confirm("Retourner à la création ? Progression non sauvegardée perdue.")) { window.location.href = "index-html.html"; }
+        };
+    }
+
+    // ===== Logique Principale du Jeu =====
+
+    function getCurrentViewData() { /* ... (inchangé) ... */
+        if (currentEncounter) return currentEncounter;
+        else if (window.gameState && window.gameState.currentLocation) {
+            const locId = window.gameState.currentLocation;
+            return window.gameData.locations[locId] || window.gameData.narratives[locId];
+        }
+        return null;
+    }
+
+    function loadLocation(locationId, cameFromEncounter = false) { /* ... (inchangé - gère déjà l'essentiel) ... */
+        console.log(`Tentative de chargement: ${locationId}`);
+        if (currentCombatState) { console.warn("Tentative de charger un lieu pendant un combat. Annulation."); return; } // Sécurité
+
+        if (!cameFromEncounter && currentEncounter) {
+            console.log("Fin de la rencontre:", currentEncounter.id);
+            currentEncounter = null;
+            document.body.classList.remove('encounter-active');
+        }
+
+        let data = null;
+        let dataType = null;
+
+        if (window.gameData.locations[locationId]) { data = window.gameData.locations[locationId]; dataType = 'location'; }
+        else if (window.gameData.narratives[locationId]) { data = window.gameData.narratives[locationId]; dataType = 'narrative'; console.warn(`ID "${locationId}" -> narrative.`); }
+
+        if (!data) {
+            console.error(`Contenu introuvable ID: "${locationId}"`);
+            const titleElement = document.getElementById('locations-title');
+            const descriptionElement = document.getElementById('locations-description');
+            const choicesContainer = document.getElementById('choices-container');
+            if (titleElement) titleElement.textContent = "Erreur - Lieu Inconnu";
+            if (descriptionElement) descriptionElement.textContent = `"${locationId}" n'existe pas ou n'est pas implémenté.`;
+            if (choicesContainer) { choicesContainer.innerHTML = `<button class="choice" onclick="goBackToPreviousLocation()">Retourner</button>`; }
+            return;
+        }
+
+        if (window.gameState) {
+             if (dataType === 'location' && window.gameState.currentLocation !== locationId) {
+                  window.gameState.previousLocation = window.gameState.currentLocation;
+                  console.log(`previousLocation MAJ: ${window.gameState.previousLocation}`);
+             }
+             window.gameState.currentLocation = locationId;
+             if (dataType === 'location') {
+                 if (!window.gameState.visitedLocations) window.gameState.visitedLocations = [];
+                 if (!window.gameState.visitedLocations.includes(locationId)) window.gameState.visitedLocations.push(locationId);
+             }
+             saveGameState();
+        } else { console.error("gameState non défini lors du chargement", locationId); return; }
+
+        const titleElement = document.getElementById('locations-title');
+        const descriptionElement = document.getElementById('locations-description');
+        if (titleElement) titleElement.textContent = data.title || locationId;
+        if (descriptionElement) descriptionElement.textContent = data.text || data.description || "Aucune description.";
+
+        const bgElement = document.getElementById('locations-background');
+        if (bgElement) { bgElement.style.backgroundImage = data.background ? `url('${data.background}')` : 'none'; bgElement.style.opacity = 0.35; }
+
+        if (data.itemGained) {
+            const itemTakenFlag = `taken_${locationId}_item`;
+             if(!window.gameState.flags || !window.gameState.flags[itemTakenFlag]) {
+                  const addedItem = addItemToInventory(data.itemGained);
+                  if(addedItem) applyEffects([{ type: 'setFlag', flag: itemTakenFlag, value: true }]); // Marquer comme pris via applyEffects
+             } else { console.log(`Item ${locationId} déjà pris.`); }
+        }
+
+        updateLocationChoices(data);
+        updateUIFromGameState();
+
+        if (dataType === 'location' && !cameFromEncounter) {
+            checkAndTriggerEncounters();
+        }
+        console.log(`"${locationId}" (${dataType}) chargé.`);
+    }
+
+    function updateLocationChoices(data) { /* ... (inchangé - gère déjà bien les conditions et actions/destinations) ... */
+        const choicesContainer = document.getElementById('choices-container');
+        if (!choicesContainer) return;
+        choicesContainer.innerHTML = '';
+
+        const choicesToShow = currentEncounter ? currentEncounter.choices : (data.choices || []);
+
+        if (choicesToShow.length === 0 && !currentEncounter) {
+            const backButton = document.createElement('button');
+            backButton.className = 'choice';
+            backButton.textContent = "Continuer...";
+            backButton.onclick = goBackToPreviousLocation;
+            choicesContainer.appendChild(backButton);
+            return;
+        }
+
+        choicesToShow.forEach(choice => {
+            const button = document.createElement('button');
+            button.className = 'choice';
+            button.innerHTML = `<span class="choice-text">${choice.text}</span>`;
+            let isDisabled = false;
+            let requirementText = null;
+
+            // Conditions check (inchangé)
+            if (choice.requiredCharacter && window.gameState && window.gameState.character !== choice.requiredCharacter) { isDisabled = true; requirementText = `(Réservé à ${choice.requiredCharacter === 'dracula' ? 'Dracula' : 'Jonathan'})`; }
+            if (!isDisabled && choice.condition && window.gameState && (!window.gameState.flags || !window.gameState.flags[choice.condition])) { isDisabled = true; }
+            if (!isDisabled && choice.conditionNot && window.gameState && window.gameState.flags && window.gameState.flags[choice.conditionNot]) { isDisabled = true; }
+            if (!isDisabled && choice.requiredItem && !hasItem(choice.requiredItem)) { isDisabled = true; const itemDetails = window.gameData.items[choice.requiredItem]; requirementText = `(Nécessite : ${itemDetails ? itemDetails.name : choice.requiredItem})`; }
+            if (!isDisabled && choice.requiredStat) { /* ... (inchangé) ... */
+                 const { stat, comparison, value } = choice.requiredStat;
+                 if (window.gameState && window.gameState.stats && window.gameState.stats[stat] !== undefined) {
+                     const currentStat = window.gameState.stats[stat]; let conditionMet = false;
+                     if (comparison === '>=') conditionMet = currentStat >= value; else if (comparison === '<=') conditionMet = currentStat <= value; else if (comparison === '>') conditionMet = currentStat > value; else if (comparison === '<') conditionMet = currentStat < value; else if (comparison === '==') conditionMet = currentStat == value;
+                     if (!conditionMet) { isDisabled = true; requirementText = `(Requiert ${stat.toUpperCase()} ${comparison} ${value})`; }
+                 } else { isDisabled = true; requirementText = `(Stat ${stat.toUpperCase()} inconnue)`; }
+            }
+
+            if (isDisabled) { /* ... (inchangé) ... */
+                button.disabled = true; button.classList.add('disabled');
+                if (requirementText) { const reqSpan = document.createElement('span'); reqSpan.className = 'requirement'; reqSpan.textContent = requirementText; button.appendChild(reqSpan); }
+            } else { /* ... (inchangé) ... */
+                button.onclick = () => { console.log("Choix:", choice);
+                    if (choice.effects) applyEffects(choice.effects); // Apply effects FIRST
+                    if (choice.destination) loadLocation(choice.destination, currentEncounter !== null);
+                    else if (choice.action) { if (typeof window[choice.action] === 'function') window[choice.action](choice); else { console.error(`Action "${choice.action}" non trouvée.`); alert(`Erreur: Action "${choice.action}" non implémentée.`); }}
+                    else { console.warn("Choix sans destination/action:", choice); alert("Choix non fonctionnel."); } };
+            }
+            choicesContainer.appendChild(button);
+        });
+    }
+
+    // ===== Fonctions d'Action Spécifiques =====
+
+    window.usePsiPower = function(choice) { /* ... (inchangé) ... */
+        if (!window.gameState || !window.gameState.stats || window.gameState.stats.psi === undefined) { alert("Erreur : Stat PSI non définie."); return; }
+        const cost = 1; if (window.gameState.stats.psi < cost) { alert(`Pas assez de PSI (${window.gameState.stats.psi}/${window.gameState.stats.psiMax})!`); return; }
+        applyEffects([{ type: 'updateStat', stat: 'psi', value: -cost }]);
+        if (choice && choice.text && choice.text.toLowerCase().includes("téléportation")) showTeleportOptions();
+        else alert(`Vous utilisez un pouvoir PSI ! (PSI restant: ${window.gameState.stats.psi})`);
+    };
+    function showTeleportOptions() { /* ... (inchangé) ... */
+        const destinations = []; if (window.gameState && window.gameState.visitedLocations) { window.gameState.visitedLocations.forEach(locationId => { if (locationId !== window.gameState.currentLocation && window.gameData.locations[locationId]) { destinations.push({ id: locationId, name: window.gameData.locations[locationId].title || locationId }); } }); }
+        if (destinations.length === 0) { alert("Aucun autre lieu connu."); applyEffects([{ type: 'updateStat', stat: 'psi', value: +1 }]); return; }
+        const modal = document.createElement('div'); modal.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.85); z-index: 1000; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;`;
+        const content = document.createElement('div'); content.style.cssText = `background-color: #1a0000; padding: 25px; border-radius: 10px; border: 2px solid #600; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; color: #ccc; font-family: Georgia, serif; box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);`;
+        const title = document.createElement('h3'); title.textContent = 'Choisissez une destination'; title.style.cssText = `color: #f44; margin-bottom: 20px; border-bottom: 1px solid #600; padding-bottom: 10px; font-size: 1.4rem; text-align: center;`; content.appendChild(title);
+        destinations.forEach(dest => { const button = document.createElement('button'); button.textContent = dest.name; button.className = 'choice'; button.style.width = '100%'; button.style.marginBottom = '10px'; button.onclick = () => { modal.remove(); alert(`Téléportation vers ${dest.name}...`); loadLocation(dest.id); }; content.appendChild(button); });
+        const cancelButton = document.createElement('button'); cancelButton.textContent = 'Annuler'; cancelButton.className = 'choice'; cancelButton.style.width = '100%'; cancelButton.style.marginTop = '20px'; cancelButton.style.backgroundColor = '#333'; cancelButton.style.borderColor = '#555'; cancelButton.onclick = () => { modal.remove(); alert("Téléportation annulée."); applyEffects([{ type: 'updateStat', stat: 'psi', value: +1 }]); }; content.appendChild(cancelButton);
+        modal.appendChild(content); document.body.appendChild(modal);
+    }
+
+    // MODIFIÉ : searchSecret pour utiliser displayRollResult
+    window.searchSecret = function(choice) {
+        console.log("Recherche passage secret:", window.gameState.currentLocation);
+        if (!window.gameState || !window.gameState.currentLocation) { alert("Lieu actuel inconnu."); return; }
+        const currentLocationId = window.gameState.currentLocation;
+        let foundDestination = null;
+        const hab = window.gameState.stats.habilete || 0;
+        const chanceBase = 0.1; const chanceParPointHab = 0.05;
+        const chanceTrouver = chanceBase + (hab * chanceParPointHab);
+        const roll = Math.random();
+        let foundSomething = roll < chanceTrouver;
+        const resultMessage = `Test d'Habilité (Recherche) : Jet ${roll.toFixed(2)} vs Chance ${chanceTrouver.toFixed(2)} - ${foundSomething ? 'Succès' : 'Échec'}`;
+        displayRollResult(resultMessage); // Affiche le résultat du jet
+
+        if (foundSomething && window.gameData.secretPassages && window.gameData.secretPassages[currentLocationId]) {
+            const potentialDestination = window.gameData.secretPassages[currentLocationId];
+            if (window.gameData.locations[potentialDestination] || window.gameData.narratives[potentialDestination]) {
+                foundDestination = potentialDestination;
+            } else { console.warn(`Passage secret -> "${potentialDestination}" inexistant.`); foundSomething = false; }
+        } else { foundSomething = false; }
+
+        if (foundDestination) {
+            alert("Vous découvrez un passage secret !");
+            applyEffects([{ type: 'updateStat', stat: 'mentalHealth', value: +1 }]);
+            loadLocation(foundDestination);
+        } else {
+            alert("Vous ne trouvez aucun passage secret ici.");
+            applyEffects([{ type: 'updateStat', stat: 'mentalHealth', value: -1 }]);
+        }
+    };
+
+    // MODIFIÉ : forceVitrine pour utiliser displayRollResult
+    window.forceVitrine = function(choice) {
+        alert("Tentative de forcer la vitrine...");
+        if (!window.gameState || !window.gameState.stats) return;
+        const force = window.gameState.stats.force || 0;
+        const difficulty = 8;
+        const diceRoll = Math.floor(Math.random() * 6) + 1 + Math.floor(Math.random() * 6) + 1; // 2d6
+        const success = diceRoll <= force;
+        const resultMessage = `Test de Force : Jet 2d6 = ${diceRoll} vs Cible ${force} - ${success ? 'Réussite !' : 'Échec.'}`;
+        displayRollResult(resultMessage); // Affiche le résultat
+
+        if (success) {
+             alert("La serrure cède !");
+             applyEffects([{ type: 'setFlag', flag: 'vitrine_ouverte', value: true }]);
+             loadLocation('examiner-vitrine');
+        } else {
+             alert("La vitrine résiste.");
+             applyEffects([{ type: 'updateStat', stat: 'health', value: -1 }]);
+        }
+    };
+    window.prendrePoignardAction = function(choice) { /* ... (inchangé) ... */
+         const narrativeData = window.gameData.narratives['prendre-poignard'];
+         if (narrativeData && narrativeData.itemGained) {
+             alert(narrativeData.text); const added = addItemToInventory(narrativeData.itemGained);
+             if(added) { applyEffects([{ type: 'setFlag', flag: 'poignard_pris', value: true }]); }
+             loadLocation('fumoir'); // Retourne même si déjà possédé
+         } else { console.error("Narrative/item 'prendre-poignard' non trouvée."); alert("Erreur."); loadLocation('fumoir'); }
+    };
+
+    // MODIFIÉ : tryOpenDrawer pour utiliser displayRollResult
+    window.tryOpenDrawer = function(choice) {
+        alert("Vous essayez d'ouvrir le tiroir coincé...");
+        const hab = window.gameState.stats.habilete || 0;
+        const difficulty = 7; const diceRoll = Math.floor(Math.random() * 12) + 1; // 1d12
+        const success = diceRoll <= hab + 3;
+        const resultMessage = `Test d'Habilité : Jet 1d12 = ${diceRoll} vs Cible ${hab + 3} - ${success ? 'Réussite !' : 'Échec.'}`;
+        displayRollResult(resultMessage); // Affiche le résultat
+
+        if(success) {
+            const drawerFlag = "bureau_tiroir_ouvert";
+            if(window.gameState.flags && window.gameState.flags[drawerFlag]) {
+                alert("Le tiroir est déjà ouvert. Il contient un vieux journal.");
+                addItemToInventory({ name: "Vieux journal", type: "lore", description: "Raconte des événements passés." });
+            } else {
+                alert("Le tiroir s'ouvre ! Il contient un vieux journal.");
+                applyEffects([{ type: 'setFlag', flag: drawerFlag, value: true }]);
+                addItemToInventory({ name: "Vieux journal", type: "lore", description: "Raconte des événements passés." });
+            }
+             loadLocation('examiner-bureau-biblio');
+        } else {
+            alert("Le tiroir reste coincé.");
+             applyEffects([{ type: 'updateStat', stat: 'mentalHealth', value: -1 }]);
+             loadLocation('examiner-bureau-biblio');
+        }
+    };
+    window.tryOpenDoor = function(choice) { /* ... (inchangé) ... */
+         if (!choice.doorNumber || !choice.requiredItem) { console.error("tryOpenDoor: params manquants", choice); alert("Erreur porte."); return; }
+         const doorNum = choice.doorNumber; const keyNeeded = choice.requiredItem; const doorOpenFlag = `door_${doorNum}_open`;
+         alert(`Essai d'ouverture porte ${doorNum}...`);
+         if (window.gameState.flags && window.gameState.flags[doorOpenFlag]) { alert("Déjà déverrouillée."); /* loadLocation(`chambre_${doorNum}`); */ alert(`(Dest porte ${doorNum} non def)`); loadLocation(window.gameState.currentLocation); return; }
+         if (hasItem(keyNeeded)) { alert(`Utilisation ${keyNeeded}. Déverrouillé !`); applyEffects([{ type: 'setFlag', flag: doorOpenFlag, value: true }]); /* loadLocation(`chambre_${doorNum}`); */ alert(`(Dest porte ${doorNum} non def)`); loadLocation(window.gameState.currentLocation); }
+         else { alert(`Verrouillé. Nécessite ${keyNeeded}.`); loadLocation(window.gameState.currentLocation); }
+    };
+    window.listenWhispers = function(choice) { /* ... (inchangé) ... */
+        alert("Vous tendez l'oreille aux murmures..."); const psi = window.gameState.stats.psi || 0; const courage = window.gameState.stats.courage || 0; const roll = Math.random(); const successChance = 0.2 + (psi * 0.05) + (courage * 0.02);
+        displayRollResult(`Test Perception PSI/Courage: Jet ${roll.toFixed(2)} vs Chance ${successChance.toFixed(2)} - ${roll < successChance ? 'Succès' : 'Échec'}`); // Affiche résultat
+        if (roll < successChance) { alert("Vous saisissez: '...sous la dalle... secret... gardien...'"); applyEffects([{ type: 'updateStat', stat: 'mentalHealth', value: -2 }, { type: 'setFlag', flag: 'heard_library_whisper_clue', value: true }]); }
+        else { alert("Les chuchotements restent indistincts."); applyEffects([{ type: 'updateStat', stat: 'mentalHealth', value: -4 }]); }
+        loadLocation('bibliotheque');
+    };
+    window.regainComposure = function(choice) { /* ... (inchangé) ... */
+        alert("Vous prenez un moment pour calmer vos nerfs..."); console.log("Action 'regainComposure'.");
+        loadLocation(window.gameState.currentLocation);
+    };
+    window.goBackToPreviousLocation = function() { /* ... (inchangé) ... */
+         console.log("Action: Retour."); if (window.gameState && window.gameState.previousLocation && window.gameState.previousLocation !== window.gameState.currentLocation) { loadLocation(window.gameState.previousLocation); }
+         else { alert("Retour impossible."); console.warn("goBack invalid", window.gameState.previousLocation); loadLocation(window.gameState.currentLocation); }
+    };
+    window.genericTakeItem = function(choice) { /* ... (inchangé) ... */
+        if (!choice.itemToTake) { console.error("genericTakeItem: itemToTake manquant", choice); alert("Erreur objet."); return; }
+        const itemKey = choice.itemToTake; let itemData = null; let sourceId = window.gameState.currentLocation;
+        if (window.gameData.items && window.gameData.items[itemKey]) itemData = window.gameData.items[itemKey];
+        else if (window.gameData.narratives[sourceId]?.itemGained?.name === itemKey) itemData = window.gameData.narratives[sourceId].itemGained;
+        else { console.warn(`Données item '${itemKey}' non trouvées.`); itemData = { name: itemKey }; }
+        const flag = `taken_${sourceId}_item_${itemKey.replace(/\s+/g, '_')}`; if (window.gameState.flags && window.gameState.flags[flag]) { alert(`Déjà pris: ${itemData.name}`); goBackToPreviousLocation(); return; }
+        const added = addItemToInventory(itemData); if(added) applyEffects([{ type: 'setFlag', flag: flag, value: true }]);
+        goBackToPreviousLocation();
+    };
+    window.exploreDedaleFurther = function(choice) { /* ... (inchangé) ... */
+         alert("Vous vous enfoncez dans les tunnels..."); const roll = Math.random();
+         if (roll < 0.3) { alert("Grattements proches! Panique!"); applyEffects([{ type: 'updateStat', stat: 'mentalHealth', value: -5 }, { type: 'updateStat', stat: 'courage', value: -2 }]); loadLocation('crypte-dracula'); }
+         else if (roll < 0.6) { alert("Le tunnel tourne en rond..."); loadLocation('dedale-necrophages'); }
+         else { alert("Vous trouvez une bourse oubliée!"); addItemToInventory({ name: "Bourse oubliée", type: "misc", description: "Contient quelques pièces." }); loadLocation('dedale-necrophages'); }
+    };
+
+
+    // ===== NOUVELLES FONCTIONS =====
+
+    /** Affiche le résultat d'un jet de dés (actuellement via alert) */
+    function displayRollResult(message) {
+        console.log("Roll Result:", message);
+        alert(message); // Simple alerte pour l'instant
+        // TODO: Remplacer par une notification moins intrusive ou un affichage dans une zone de log dédiée.
+    }
+
+     /** Tente d'utiliser un objet depuis l'inventaire */
+     function tryUseItem(itemName) {
+         if (currentCombatState) {
+              alert("Impossible d'utiliser un objet de cette manière pendant un combat."); // Gérer via actions de combat dédiées
+              return;
+         }
+         console.log(`Tentative d'utilisation de: ${itemName}`);
+         if (!window.gameState || !window.gameState.inventory) return;
+
+         const itemInInventory = window.gameState.inventory.find(i => (typeof i === 'object' ? i.name : i) === itemName);
+         if (!itemInInventory) {
+              console.error(`Objet ${itemName} non trouvé dans l'inventaire pour utilisation.`);
+              return; // Ne devrait pas arriver si appelé depuis l'UI
+         }
+
+         // Récupérer les données complètes de l'objet depuis gameData.items
+         const itemData = window.gameData.items[itemName];
+
+         if (!itemData) {
+              alert(`Informations sur "${itemName}" introuvables.`);
+              return;
+         }
+
+         // Vérifier si l'objet est utilisable (potion, nourriture...)
+         if (itemData.type === 'potion' || itemData.type === 'food') {
+             if (itemData.effect) {
+                 // Construire un message de confirmation
+                 let confirmMsg = `Voulez-vous utiliser ${itemData.name} ?`;
+                 if (itemData.effect.type === 'health') {
+                      confirmMsg += `\n(Restaure ${itemData.effect.value} PV)`;
+                 } // Ajouter d'autres types d'effets si nécessaire
+
+                 if (confirm(` ${confirmMsg} `)) {
+                     console.log(`Utilisation confirmée de ${itemName}`);
+                     // Appliquer l'effet
+                     applyEffects([itemData.effect]); // applyEffects gère la mise à jour des stats et sauvegarde
+
+                     // Retirer si usage unique
+                     if (itemData.singleUse) {
+                          const removed = removeItemFromInventory(itemName); // removeItem gère màj UI et sauvegarde
+                          if (removed) {
+                               alert(`${itemData.name} utilisé(e).`);
+                          }
+                     } else {
+                          alert(`${itemData.name} utilisé(e).`);
+                     }
+                 } else {
+                      console.log(`Utilisation de ${itemName} annulée.`);
+                 }
+             } else {
+                  alert(`${itemData.name} ne semble avoir aucun effet.`);
+             }
+         } else if (itemData.type === 'weapon' || itemData.type === 'key' || itemData.type === 'misc') {
+             alert(`Vous examinez ${itemData.name}. ${itemData.description || ''}\n(Cet objet s'utilise dans des contextes spécifiques.)`);
+         } else {
+             alert(`Vous ne savez pas comment utiliser ${itemData.name} directement.`);
+         }
+     }
+
+    // ===== Système de Combat (Basique) =====
+
+    /** Ajoute un message au journal de combat et fait défiler vers le bas */
+    function logCombatMessage(message) {
+        const log = document.getElementById('combat-log');
+        if (log) {
+            const p = document.createElement('p');
+            p.textContent = message;
+            log.appendChild(p);
+            log.scrollTop = log.scrollHeight; // Auto-scroll
+        } else {
+            console.log("Combat Log:", message); // Fallback console
+        }
+    }
+
+    /** Démarre le combat */
+    function startCombat(choice) {
+        const enemyId = choice.combatTarget;
+        if (!enemyId || !window.gameData.enemies[enemyId]) {
+            displayRollResult("Erreur : Cible de combat invalide.");
+            goBackToPreviousLocation();
+            return;
+        }
+
+        const enemyData = { ...window.gameData.enemies[enemyId] }; // Copie pour ne pas modifier l'original
+        console.log(`Combat engagé contre: ${enemyId}`, enemyData);
+
+        // Initialiser l'état de combat
+        currentCombatState = {
+            enemy: enemyData,
+            playerHealth: window.gameState.stats.health,
+            playerMaxHealth: window.gameState.stats.maxHealth,
+            enemyHealth: enemyData.health, // Utiliser la santé actuelle de l'ennemi (pourrait être blessé?)
+            enemyMaxHealth: enemyData.maxHealth,
+            turn: 1
+        };
+
+        // Préparer l'UI
+        const contentWrapper = document.querySelector('.content-wrapper');
+        const combatUI = document.getElementById('combat-ui');
+        const enemyName = document.getElementById('combat-enemy-name');
+        const playerHealthSpan = document.getElementById('combat-player-health');
+        const playerMaxHealthSpan = document.getElementById('combat-player-max-health');
+        const enemyHealthSpan = document.getElementById('combat-enemy-health');
+        const enemyMaxHealthSpan = document.getElementById('combat-enemy-max-health');
+        const attackButton = document.getElementById('combat-attack-btn');
+        const combatLog = document.getElementById('combat-log');
+
+        if (!combatUI || !contentWrapper) {
+             console.error("Éléments UI de combat ou content wrapper non trouvés!");
+             alert("Erreur UI Combat!"); // Fallback si UI non prête
+             currentCombatState = null; // Annuler le combat
+             return;
+        }
+
+        // Cacher l'UI normale, afficher l'UI de combat
+        contentWrapper.classList.add('hidden');
+        combatUI.classList.add('visible');
+        document.body.classList.add('combat-active');
+        updateUIFromGameState(); // Pour désactiver les boutons header etc.
+
+        // Remplir l'UI de combat
+        if(enemyName) enemyName.textContent = currentCombatState.enemy.name;
+        if(playerHealthSpan) playerHealthSpan.textContent = currentCombatState.playerHealth;
+        if(playerMaxHealthSpan) playerMaxHealthSpan.textContent = currentCombatState.playerMaxHealth;
+        if(enemyHealthSpan) enemyHealthSpan.textContent = currentCombatState.enemyHealth;
+        if(enemyMaxHealthSpan) enemyMaxHealthSpan.textContent = currentCombatState.enemyMaxHealth;
+
+        // Nettoyer le log et ajouter message initial
+        if(combatLog) combatLog.innerHTML = '';
+        logCombatMessage(`Combat engagé contre ${currentCombatState.enemy.name} !`);
+
+        // Attacher l'action au bouton Attaquer
+        if(attackButton) {
+            attackButton.onclick = () => handleCombatAction('attack');
+            attackButton.disabled = false; // S'assurer qu'il est actif
+        }
+        // Désactiver/Activer d'autres boutons d'action ici si nécessaire
+    }
+
+    /** Gère une action de combat (très basique) */
+    function handleCombatAction(actionType) {
+        if (!currentCombatState) return; // Sécurité
+
+        const playerStats = window.gameState.stats;
+        const enemyStats = currentCombatState.enemy.stats;
+        let playerDamage = 0;
+        let enemyDamage = 0;
+
+        logCombatMessage(`--- Tour ${currentCombatState.turn} ---`);
+
+        // --- Action du Joueur ---
+        if (actionType === 'attack') {
+            // Calcul dégâts joueur (exemple très simple)
+            const attackRoll = Math.floor(Math.random() * 6) + 1; // 1d6
+            // Supposons que la force ajoute aux dégâts
+            playerDamage = Math.max(1, attackRoll + (playerStats.force || 0) - (enemyStats.habilete || 0)); // Dégâts = 1d6 + FOR_joueur - HAB_ennemi (minimum 1)
+            currentCombatState.enemyHealth -= playerDamage;
+            currentCombatState.enemyHealth = Math.max(0, currentCombatState.enemyHealth); // Pas de santé négative
+             logCombatMessage(`Vous attaquez ${currentCombatState.enemy.name} et infligez ${playerDamage} dégâts.`);
+        } else {
+            logCombatMessage(`Action '${actionType}' non implémentée.`);
+            // Gérer fuite, objet, PSI ici
+        }
+
+        // Mettre à jour affichage santé ennemi
+        const enemyHealthSpan = document.getElementById('combat-enemy-health');
+        if(enemyHealthSpan) enemyHealthSpan.textContent = currentCombatState.enemyHealth;
+
+        // --- Vérifier Victoire Joueur ---
+        if (currentCombatState.enemyHealth <= 0) {
+            logCombatMessage(`${currentCombatState.enemy.name} est vaincu !`);
+            endCombat(true); // Victoire
+            return; // Sortir de la fonction, le combat est terminé
+        }
+
+        // --- Action de l'Ennemi ---
+        // Calcul dégâts ennemi (exemple très simple)
+        const enemyAttackRoll = Math.floor(Math.random() * 6) + 1; // 1d6
+        enemyDamage = Math.max(1, enemyAttackRoll + (enemyStats.force || 0) - (playerStats.habilete || 0)); // Dégâts = 1d6 + FOR_ennemi - HAB_joueur (minimum 1)
+        currentCombatState.playerHealth -= enemyDamage;
+        currentCombatState.playerHealth = Math.max(0, currentCombatState.playerHealth); // Pas de santé négative
+
+        logCombatMessage(`${currentCombatState.enemy.name} attaque et vous inflige ${enemyDamage} dégâts.`);
+
+        // Mettre à jour gameState ET UI Combat ET UI Principale
+        window.gameState.stats.health = currentCombatState.playerHealth;
+        updateStatsDisplay(); // Met à jour l'affichage principal (header/sidebar)
+        const playerHealthSpan = document.getElementById('combat-player-health');
+        if(playerHealthSpan) playerHealthSpan.textContent = currentCombatState.playerHealth;
+
+        // --- Vérifier Défaite Joueur ---
+        if (currentCombatState.playerHealth <= 0) {
+            logCombatMessage("Vous succombez à vos blessures...");
+            endCombat(false); // Défaite
+            return; // Sortir, combat terminé
+        }
+
+        // Passer au tour suivant
+        currentCombatState.turn++;
+        // Réactiver les boutons d'action si nécessaire
+        document.getElementById('combat-attack-btn').disabled = false;
+    }
+
+    /** Termine le combat */
+    function endCombat(isVictory) {
+        const contentWrapper = document.querySelector('.content-wrapper');
+        const combatUI = document.getElementById('combat-ui');
+
+        if (isVictory) {
+            displayRollResult(`Victoire contre ${currentCombatState.enemy.name} !`);
+            // Donner le butin
+            if (currentCombatState.enemy.loot) {
+                addItemToInventory(currentCombatState.enemy.loot);
+            }
+            // Gérer XP, etc.
+        } else {
+            displayRollResult("Défaite...");
+            // Gérer Game Over : recharger sauvegarde, retourner au début, etc.
+            // Pour l'instant, on recharge juste le lieu précédent (comme une fuite)
+            alert("Vous reprenez conscience, affaibli, là où vous étiez avant le combat.");
+        }
+
+        // Nettoyer l'état de combat
+        const previousLocationBeforeCombat = window.gameState.previousLocation; // Sauver le lieu avant le combat
+        currentCombatState = null;
+        document.body.classList.remove('combat-active');
+
+
+        // Restaurer l'UI normale
+        if(combatUI) combatUI.classList.remove('visible');
+        if(contentWrapper) contentWrapper.classList.remove('hidden');
+        updateUIFromGameState(); // Réactive les boutons etc.
+
+        // Charger le lieu approprié après le combat
+        // Si victoire, retourner au lieu *avant* la narrative de combat
+        // Si défaite, idem pour l'instant
+         if (previousLocationBeforeCombat && window.gameData.locations[previousLocationBeforeCombat]) {
+             loadLocation(previousLocationBeforeCombat);
+         } else {
+             // Fallback si on ne trouve pas le lieu précédent correct
+             console.warn("Impossible de déterminer le lieu d'origine après combat, retour 'cimetiere'.");
+             loadLocation('cimetiere');
+         }
+
+        saveGameState(); // Sauvegarder l'état final post-combat
+    }
+
+
+    // ===== Système de Rencontres Dynamiques =====
+    function checkAndTriggerEncounters() { /* ... (inchangé) ... */
+        if (!window.gameData.encounters || !window.gameState || currentEncounter || currentCombatState) return; // Ne pas déclencher si rencontre ou combat en cours
+        const possibleEncounters = []; const currentLocation = window.gameState.currentLocation; console.log("Vérif rencontres:", currentLocation);
+        for (const encounterId in window.gameData.encounters) { const encounter = window.gameData.encounters[encounterId]; let conditionsMet = true;
+            if (encounter.onceOnly && window.gameState.flags && window.gameState.flags[`encountered_${encounter.id}`]) { conditionsMet = false; continue; }
+            if (encounter.triggerConditions) { for (const condition of encounter.triggerConditions) { let check = false;
+                    switch (condition.type) {
+                        case 'location': check = (currentLocation === condition.value); break;
+                        case 'mentalHealth': const mh = window.gameState.stats.mentalHealth, tmh = condition.value; if (condition.comparison === '<') check = mh < tmh; else if (condition.comparison === '>') check = mh > tmh; else if (condition.comparison === '<=') check = mh <= tmh; else if (condition.comparison === '>=') check = mh >= tmh; else if (condition.comparison === '==') check = mh == tmh; break;
+                        case 'hasItem': check = hasItem(condition.value); break;
+                        case 'hasFlag': check = !!(window.gameState.flags && window.gameState.flags[condition.value]); break;
+                        default: console.warn(`Cond type inconnu: ${condition.type}`); }
+                    if (!check) { conditionsMet = false; break; } } }
+            if (conditionsMet) { console.log(`Rencontre possible: ${encounter.id}`); possibleEncounters.push(encounter); } }
+        if (possibleEncounters.length > 0) { const roll = Math.random(); for (const enc of possibleEncounters) { const prob = enc.probability ?? 1.0; if (roll < prob) { console.log(`Déclenchement ${enc.id}`); displayEncounter(enc); break; } else { console.log(`${enc.id} non déclenchée.`); } } }
+        else { console.log("Aucune rencontre possible."); }
+        checkRandomEvents();
+    }
+    function checkRandomEvents() { /* ... (inchangé - utilise displayRollResult) ... */
+         if (!window.gameData.randomEvents || currentEncounter || currentCombatState) return; // Pas d'event si rencontre/combat
+         const roll = Math.random(); let triggered = false;
+         for(const event of window.gameData.randomEvents) { if (!triggered && roll < (event.probability || 0.05)) { console.log(`Event: ${event.name}`); triggered = true;
+               if (event.description) { const descEl = document.getElementById('locations-description'); if(descEl) descEl.textContent += `\n\n${event.description}`; else displayRollResult(event.description); } // displayRollResult comme fallback
+               if (event.effect && typeof event.effect === 'function') event.effect(); saveGameState(); break; } }
+    }
+    function displayEncounter(encounterData) { /* ... (inchangé) ... */
+        console.log(`Affichage rencontre: ${encounterData.id}`); currentEncounter = encounterData; document.body.classList.add('encounter-active');
+        const titleEl = document.getElementById('locations-title'); const descEl = document.getElementById('locations-description');
+        if (titleEl) titleEl.textContent = encounterData.title || "Événement"; if (descEl) descEl.textContent = encounterData.description || "...";
+        if (encounterData.effectsOnTrigger) applyEffects(encounterData.effectsOnTrigger);
+        if (encounterData.onceOnly) applyEffects([{ type: 'setFlag', flag: `encountered_${encounterData.id}`, value: true }]);
+        updateLocationChoices(encounterData);
+    }
+
+    // ===== Initialisation =====
+
+    function initGame() {
+        console.log("Initialisation du jeu...");
+        const stateLoaded = loadGameState();
+
+        if (stateLoaded && window.gameState) {
+            console.log("État chargé, init UI et lieu.");
+            // Assurer que les éléments UI existent avant de les manipuler
+             if(!document.getElementById('ui-container')) {
+                  console.error("Erreur critique : #ui-container non trouvé dans le DOM !");
+                  alert("Erreur: Interface de jeu non trouvée.");
+                  return;
+             }
+            updateUIFromGameState();
+            loadLocation(window.gameState.currentLocation);
+        } else {
+            console.warn("Aucun état valide trouvé, redirection.");
+            alert("Bienvenue ! Aucune sauvegarde trouvée ou valide. Redirection vers création.");
+            window.location.href = "index-html.html";
+            return;
+        }
+
+        setupUIButtons();
+        console.log("Initialisation du jeu terminée.");
+    }
+
+    // Lancer l'initialisation une fois que le DOM est prêt
+    document.addEventListener('DOMContentLoaded', initGame);
+
+  </script>
+</body>
+</html>
+```
